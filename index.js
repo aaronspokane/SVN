@@ -1,1 +1,1 @@
-const dir = "";
+const dir = "c:\";
