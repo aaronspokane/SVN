@@ -16,5 +16,8 @@
   "bugs": {
     "url": "https://github.com/aaronspokane/SVN/issues"
   },
-  "homepage": "https://github.com/aaronspokane/SVN#readme"
+  "homepage": "https://github.com/aaronspokane/SVN#readme",
+  "dependencies": {
+    "node-svn-ultimate": "^1.1.0"
+  }
 }
