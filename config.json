@@ -1,4 +1,6 @@
-{
-  _svnCheckoutPath: "http://fabuildsrv2:8080/svn/fasuite/trunk/InfoCenterBase/Scheduling/FATaskCreator/FATaskCreator",
-  _reproDir: "D:\Repo"
-}
+{"_host":"Avian","_homedirectory":"cake", "_checkoutdirectories": [
+  {"dir":"dir1"},
+  {"dir":"dir2"},
+  {"dir":"dir3"},
+  {"dir":"dir4"}
+]}

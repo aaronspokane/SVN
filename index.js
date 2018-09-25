@@ -2,23 +2,26 @@ const svnUltimate = require('node-svn-ultimate');
 const fs = require('fs');
 const nconf = require('nconf');
 const path = require('path');
+let svn = require('./scripts/svn');
 
 var _filePath = path.resolve(__dirname, "config.json");
 
-if(!fs.statSync(_filePath))
+if(!fs.existsSync(_filePath))
 {
   console.log("config does not exist!!");
-  return;
+  process.exit(-1);
 }
+else {
+  nconf.file({
+    file: _filePath,
+    // Setting the separator as dot for nested objects
+    logicalSeparator: '.'
+  });
 
-nconf.argv()
-  .env()
-  .file({file: "/config.json"});
+  svn = new svn();
+  svn.process(nconf);
 
-/*const startTime = new Date();
-svnUltimate.commands.checkout('http://fabuildsrv2:8080/svn/fasuite/trunk/InfoCenterBase/Scheduling/FATaskCreator/FATaskCreator','D:\Repo',(err) => {
-  const endTime = new Date();
-  const completeTime = endTime - startTime;
-  console.log(`Checkout complete in ${completeTime} ms`);
-});
-*/
+  svn.on("processed", function(data) {
+    console.log(data);
+  });
+}
