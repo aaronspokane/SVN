@@ -8,17 +8,17 @@ class svn extends EventEmitter {
 
   process(nconf)
   {
+    const startTime = performance.now();
     nconf.get('_checkoutdirectories').forEach((index) => {
+      /*
+      svnUltimate.commands.checkout('http://fabuildsrv2:8080/svn/fasuite/trunk/InfoCenterBase/Scheduling/FATaskCreator/FATaskCreator','D:\Repo',(err) => {
+      var end = window.performance.now();
+      var dur = end - start;
+      console.log(`Checkout complete in ${dur} ms`);
+      });
+      */
         this.emit("processed", index.dir);
     });
-
-    /*const startTime = new Date();
-    svnUltimate.commands.checkout('http://fabuildsrv2:8080/svn/fasuite/trunk/InfoCenterBase/Scheduling/FATaskCreator/FATaskCreator','D:\Repo',(err) => {
-      const endTime = new Date();
-      const completeTime = endTime - startTime;
-      console.log(`Checkout complete in ${completeTime} ms`);
-    });
-    */
   }
 }
 

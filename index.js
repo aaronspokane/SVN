@@ -3,8 +3,12 @@ const fs = require('fs');
 const nconf = require('nconf');
 const path = require('path');
 let svn = require('./scripts/svn');
+const numCPUs = require('os').cpus().length;
 
 var _filePath = path.resolve(__dirname, "config.json");
+
+//www.acuriousanimal.com/2017/08/12/understanding-the-nodejs-cluster-module.html
+
 
 if(!fs.existsSync(_filePath))
 {
@@ -19,9 +23,10 @@ else {
   });
 
   svn = new svn();
-  svn.process(nconf);
 
   svn.on("processed", function(data) {
     console.log(data);
   });
+
+  svn.process(nconf);
 }
