@@ -1,0 +1,13 @@
+set ModuleFolder=FAScheduling
+
+copy %1\bin\Release\FATaskCreator.exe %TargetDir%\Modules\%ModuleFolder%\Scheduling
+copy %1\bin\Release\TaskScheduler.dll %TargetDir%\Modules\%ModuleFolder%\Scheduling
+copy %1\InstallUtil.exe %TargetDir%\Modules\%ModuleFolder%\Scheduling
+copy %1\bin\Release\FACommon.dll %TargetDir%\Modules\%ModuleFolder%\Scheduling
+copy %1\bin\Release\FADataAccess.dll %TargetDir%\Modules\%ModuleFolder%\Scheduling
+
+copy ..\FAReportingData\bin\Release\FAReportingData.dll %TargetDir%\Modules\%ModuleFolder%\Scheduling
+copy ..\FAScheduling\bin\Release\FAScheduling.dll %TargetDir%\Modules\%ModuleFolder%\Scheduling
+copy %1\FATaskCreatorInstall.bat %TargetDir%\Modules\%ModuleFolder%\Scheduling
+
+copy %1\bin\Release\FAScheduling.dll %TargetDir%\Modules\%ModuleFolder%\web\bin

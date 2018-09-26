@@ -1,0 +1,98 @@
+﻿using System;
+using System.Linq;
+using System.Collections.Generic;
+using System.Threading;
+using FASuite.AMTransferObjects;
+
+namespace FASuite.Scheduler
+{
+    public class ThreadManager
+    {
+        private static List<Tuple<string, Thread>> threadList = new List<Tuple<string, Thread>>();
+        
+        public static void StartTask(string taskType, ScheduledTasksTO TaskRecord, Application.Session AppSession)
+        {
+            // max number of threads allowed for this task type
+            int gvnrLimit = -1;
+
+            switch (taskType)
+            {
+                case Tasks.TaskBase.TaskTypes.DATA_LOAD: gvnrLimit = Tasks.TaskBase.TaskThreadGovernor.DataLoad; break;
+                case Tasks.TaskBase.TaskTypes.REPORT: gvnrLimit = Tasks.TaskBase.TaskThreadGovernor.Reporting; break;
+            }
+
+            if (gvnrLimit > -1)
+            {
+                // go through and remove all completed threads
+                var tempList = new List<Tuple<string, Thread>>();
+                foreach (var item in threadList)
+                    if (item.Item2.IsAlive)
+                        tempList.Add(item);
+                threadList = tempList;
+
+                // get all threads for this task type
+                var specificThreadList = threadList.Where(x => x.Item1.Equals(taskType)).ToList();
+
+                // if max number of threads is not met yet, create a new thread
+                if(specificThreadList.Count < gvnrLimit)
+                {
+                    var TheTask = Tasks.TaskBase.GetTaskClass(taskType);
+
+                    Thread newThread = new Thread(new ParameterizedThreadStart(TheTask.ExecuteTask));
+                    newThread.IsBackground = true; // set as background thread to prevent OnStop from hanging while waiting for resources
+                    newThread.Name = taskType + specificThreadList.Count;
+                    newThread.Start(new ThreadData() { taskTO = TaskRecord });
+                    threadList.Add(new Tuple<string, Thread>(taskType, newThread));
+
+                    // go update the db to mark the task as started?
+                    if (((object)TaskRecord) != null)
+                    {
+                        // we know this is a SCHEDULED_TASKS record, go update it's started flag to be Y.
+                        // use screen to do this?
+
+                        Utils.ConnectAsUser(AppSession, JobScheduler.jobSchedulerLog, TaskRecord.XUseridInsert.Value);
+
+                        var screen = FASession.Common.GetFAScreen(AppSession.FASession, 6029);
+                        screen.ClearFilter();
+                        screen.AddFilter(13972, 5, TaskRecord.RowId.Value.ToString());
+                        screen.RequestGridData(1);
+                        FASession.Common.WaitScreenPending(screen);
+
+                        if (screen.theScreenData.NumGridRows == 1)
+                        {
+                            screen.RequestDetailData(0);
+                            FASession.Common.WaitScreenPending(screen);
+
+                            screen.PrepareUpdate();
+
+                            // DateTimeActualStart
+                            screen.SetValue(13973, 8, FACommon.Utils.Dates.FormatDateTime(DateTime.Now));
+                            FASession.Common.WaitScreenPending(screen);
+
+                            screen.SetValue(13973, 10, "STARTED");
+                            FASession.Common.WaitScreenPending(screen);
+
+                            var screenState = FASession.CommitWatcher.CommitSynchronous(screen, null, true);
+
+                            if (!screenState.Success)
+                            {
+                                // what to do here...
+                                // There are no screen validations, not sure what would fail.
+                                new Logging(string.Empty).ErrorLog(string.Format("Failed to update task record. {0}{1}",
+                                                                Environment.NewLine,
+                                                                FACommon.JSON.Serialize(screenState)));
+                            }
+                        }
+
+                        AppSession.FASession.Stop();
+                    }
+                }
+            }
+        } // End Method: StartTask(...)
+    } // End Class: ThreadManager
+
+    public class ThreadData
+    {
+        public ScheduledTasksTO taskTO = null;
+    }
+}

@@ -1,0 +1,950 @@
+<?xml version="1.0" encoding="utf-8"?>
+<wsdl:definitions xmlns:http="http://schemas.xmlsoap.org/wsdl/http/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:mime="http://schemas.xmlsoap.org/wsdl/mime/" xmlns:tns="http://tempuri.org/" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:tm="http://microsoft.com/wsdl/mime/textMatching/" xmlns:s="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://schemas.xmlsoap.org/wsdl/soap12/" targetNamespace="http://tempuri.org/" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+  <wsdl:types>
+    <s:schema elementFormDefault="qualified" targetNamespace="http://tempuri.org/">
+      <s:element name="CloseRptRASConnection">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="sessionRptID" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="CloseRptRASConnectionResponse">
+        <s:complexType />
+      </s:element>
+      <s:element name="GetReportAsByte">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="xmlString" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="UserId" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="Export_Type" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetReportAsByteResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="GetReportAsByteResult" type="s:base64Binary" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetTimeout">
+        <s:complexType />
+      </s:element>
+      <s:element name="GetTimeoutResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="GetTimeoutResult" type="s:int" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="ConvertRpts">
+        <s:complexType />
+      </s:element>
+      <s:element name="ConvertRptsResponse">
+        <s:complexType />
+      </s:element>
+      <s:element name="GetData">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="dateTime" type="s:dateTime" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetDataResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="GetDataResult">
+              <s:complexType>
+                <s:sequence>
+                  <s:element ref="s:schema" />
+                  <s:any />
+                </s:sequence>
+              </s:complexType>
+            </s:element>
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="Conversion_GetData">
+        <s:complexType />
+      </s:element>
+      <s:element name="Conversion_GetDataResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="Conversion_GetDataResult">
+              <s:complexType>
+                <s:sequence>
+                  <s:element ref="s:schema" />
+                  <s:any />
+                </s:sequence>
+              </s:complexType>
+            </s:element>
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="CheckTables">
+        <s:complexType />
+      </s:element>
+      <s:element name="CheckTablesResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="CheckTablesResult" type="s:boolean" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="InsertData">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="userID" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="aTaskName" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="new_xml_string" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="editpage" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="desc" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="exporttype" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="offset" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="title" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="InsertDataResponse">
+        <s:complexType />
+      </s:element>
+      <s:element name="ReportsFailedToSendData">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="Run_Id" type="s:string" />
+            <s:element minOccurs="1" maxOccurs="1" name="nextRunTime" type="s:dateTime" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="ReportsFailedToSendDataResponse">
+        <s:complexType />
+      </s:element>
+      <s:element name="StartReport">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="Run_Id" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="StartReportResponse">
+        <s:complexType />
+      </s:element>
+      <s:element name="UpdateCompletionData">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="runId" type="s:string" />
+            <s:element minOccurs="1" maxOccurs="1" name="onceOnly" type="s:boolean" />
+            <s:element minOccurs="0" maxOccurs="1" name="nextDateTime" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="UpdateCompletionDataResponse">
+        <s:complexType />
+      </s:element>
+      <s:element name="UpdateNexRunTimeData">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="runId" type="s:string" />
+            <s:element minOccurs="1" maxOccurs="1" name="nextTime" type="s:dateTime" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="UpdateNexRunTimeDataResponse">
+        <s:complexType />
+      </s:element>
+      <s:element name="base64Binary" nillable="true" type="s:base64Binary" />
+      <s:element name="int" type="s:int" />
+      <s:element name="DataSet" nillable="true">
+        <s:complexType>
+          <s:sequence>
+            <s:element ref="s:schema" />
+            <s:any />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="boolean" type="s:boolean" />
+    </s:schema>
+  </wsdl:types>
+  <wsdl:message name="CloseRptRASConnectionSoapIn">
+    <wsdl:part name="parameters" element="tns:CloseRptRASConnection" />
+  </wsdl:message>
+  <wsdl:message name="CloseRptRASConnectionSoapOut">
+    <wsdl:part name="parameters" element="tns:CloseRptRASConnectionResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetReportAsByteSoapIn">
+    <wsdl:part name="parameters" element="tns:GetReportAsByte" />
+  </wsdl:message>
+  <wsdl:message name="GetReportAsByteSoapOut">
+    <wsdl:part name="parameters" element="tns:GetReportAsByteResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetTimeoutSoapIn">
+    <wsdl:part name="parameters" element="tns:GetTimeout" />
+  </wsdl:message>
+  <wsdl:message name="GetTimeoutSoapOut">
+    <wsdl:part name="parameters" element="tns:GetTimeoutResponse" />
+  </wsdl:message>
+  <wsdl:message name="ConvertRptsSoapIn">
+    <wsdl:part name="parameters" element="tns:ConvertRpts" />
+  </wsdl:message>
+  <wsdl:message name="ConvertRptsSoapOut">
+    <wsdl:part name="parameters" element="tns:ConvertRptsResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetDataSoapIn">
+    <wsdl:part name="parameters" element="tns:GetData" />
+  </wsdl:message>
+  <wsdl:message name="GetDataSoapOut">
+    <wsdl:part name="parameters" element="tns:GetDataResponse" />
+  </wsdl:message>
+  <wsdl:message name="Conversion_GetDataSoapIn">
+    <wsdl:part name="parameters" element="tns:Conversion_GetData" />
+  </wsdl:message>
+  <wsdl:message name="Conversion_GetDataSoapOut">
+    <wsdl:part name="parameters" element="tns:Conversion_GetDataResponse" />
+  </wsdl:message>
+  <wsdl:message name="CheckTablesSoapIn">
+    <wsdl:part name="parameters" element="tns:CheckTables" />
+  </wsdl:message>
+  <wsdl:message name="CheckTablesSoapOut">
+    <wsdl:part name="parameters" element="tns:CheckTablesResponse" />
+  </wsdl:message>
+  <wsdl:message name="InsertDataSoapIn">
+    <wsdl:part name="parameters" element="tns:InsertData" />
+  </wsdl:message>
+  <wsdl:message name="InsertDataSoapOut">
+    <wsdl:part name="parameters" element="tns:InsertDataResponse" />
+  </wsdl:message>
+  <wsdl:message name="ReportsFailedToSendDataSoapIn">
+    <wsdl:part name="parameters" element="tns:ReportsFailedToSendData" />
+  </wsdl:message>
+  <wsdl:message name="ReportsFailedToSendDataSoapOut">
+    <wsdl:part name="parameters" element="tns:ReportsFailedToSendDataResponse" />
+  </wsdl:message>
+  <wsdl:message name="StartReportSoapIn">
+    <wsdl:part name="parameters" element="tns:StartReport" />
+  </wsdl:message>
+  <wsdl:message name="StartReportSoapOut">
+    <wsdl:part name="parameters" element="tns:StartReportResponse" />
+  </wsdl:message>
+  <wsdl:message name="UpdateCompletionDataSoapIn">
+    <wsdl:part name="parameters" element="tns:UpdateCompletionData" />
+  </wsdl:message>
+  <wsdl:message name="UpdateCompletionDataSoapOut">
+    <wsdl:part name="parameters" element="tns:UpdateCompletionDataResponse" />
+  </wsdl:message>
+  <wsdl:message name="UpdateNexRunTimeDataSoapIn">
+    <wsdl:part name="parameters" element="tns:UpdateNexRunTimeData" />
+  </wsdl:message>
+  <wsdl:message name="UpdateNexRunTimeDataSoapOut">
+    <wsdl:part name="parameters" element="tns:UpdateNexRunTimeDataResponse" />
+  </wsdl:message>
+  <wsdl:message name="CloseRptRASConnectionHttpGetIn">
+    <wsdl:part name="sessionRptID" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="CloseRptRASConnectionHttpGetOut" />
+  <wsdl:message name="GetReportAsByteHttpGetIn">
+    <wsdl:part name="xmlString" type="s:string" />
+    <wsdl:part name="UserId" type="s:string" />
+    <wsdl:part name="Export_Type" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="GetReportAsByteHttpGetOut">
+    <wsdl:part name="Body" element="tns:base64Binary" />
+  </wsdl:message>
+  <wsdl:message name="GetTimeoutHttpGetIn" />
+  <wsdl:message name="GetTimeoutHttpGetOut">
+    <wsdl:part name="Body" element="tns:int" />
+  </wsdl:message>
+  <wsdl:message name="ConvertRptsHttpGetIn" />
+  <wsdl:message name="ConvertRptsHttpGetOut" />
+  <wsdl:message name="GetDataHttpGetIn">
+    <wsdl:part name="dateTime" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="GetDataHttpGetOut">
+    <wsdl:part name="Body" element="tns:DataSet" />
+  </wsdl:message>
+  <wsdl:message name="Conversion_GetDataHttpGetIn" />
+  <wsdl:message name="Conversion_GetDataHttpGetOut">
+    <wsdl:part name="Body" element="tns:DataSet" />
+  </wsdl:message>
+  <wsdl:message name="CheckTablesHttpGetIn" />
+  <wsdl:message name="CheckTablesHttpGetOut">
+    <wsdl:part name="Body" element="tns:boolean" />
+  </wsdl:message>
+  <wsdl:message name="InsertDataHttpGetIn">
+    <wsdl:part name="userID" type="s:string" />
+    <wsdl:part name="aTaskName" type="s:string" />
+    <wsdl:part name="new_xml_string" type="s:string" />
+    <wsdl:part name="editpage" type="s:string" />
+    <wsdl:part name="desc" type="s:string" />
+    <wsdl:part name="exporttype" type="s:string" />
+    <wsdl:part name="offset" type="s:string" />
+    <wsdl:part name="title" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="InsertDataHttpGetOut" />
+  <wsdl:message name="ReportsFailedToSendDataHttpGetIn">
+    <wsdl:part name="Run_Id" type="s:string" />
+    <wsdl:part name="nextRunTime" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="ReportsFailedToSendDataHttpGetOut" />
+  <wsdl:message name="StartReportHttpGetIn">
+    <wsdl:part name="Run_Id" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="StartReportHttpGetOut" />
+  <wsdl:message name="UpdateCompletionDataHttpGetIn">
+    <wsdl:part name="runId" type="s:string" />
+    <wsdl:part name="onceOnly" type="s:string" />
+    <wsdl:part name="nextDateTime" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="UpdateCompletionDataHttpGetOut" />
+  <wsdl:message name="UpdateNexRunTimeDataHttpGetIn">
+    <wsdl:part name="runId" type="s:string" />
+    <wsdl:part name="nextTime" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="UpdateNexRunTimeDataHttpGetOut" />
+  <wsdl:message name="CloseRptRASConnectionHttpPostIn">
+    <wsdl:part name="sessionRptID" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="CloseRptRASConnectionHttpPostOut" />
+  <wsdl:message name="GetReportAsByteHttpPostIn">
+    <wsdl:part name="xmlString" type="s:string" />
+    <wsdl:part name="UserId" type="s:string" />
+    <wsdl:part name="Export_Type" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="GetReportAsByteHttpPostOut">
+    <wsdl:part name="Body" element="tns:base64Binary" />
+  </wsdl:message>
+  <wsdl:message name="GetTimeoutHttpPostIn" />
+  <wsdl:message name="GetTimeoutHttpPostOut">
+    <wsdl:part name="Body" element="tns:int" />
+  </wsdl:message>
+  <wsdl:message name="ConvertRptsHttpPostIn" />
+  <wsdl:message name="ConvertRptsHttpPostOut" />
+  <wsdl:message name="GetDataHttpPostIn">
+    <wsdl:part name="dateTime" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="GetDataHttpPostOut">
+    <wsdl:part name="Body" element="tns:DataSet" />
+  </wsdl:message>
+  <wsdl:message name="Conversion_GetDataHttpPostIn" />
+  <wsdl:message name="Conversion_GetDataHttpPostOut">
+    <wsdl:part name="Body" element="tns:DataSet" />
+  </wsdl:message>
+  <wsdl:message name="CheckTablesHttpPostIn" />
+  <wsdl:message name="CheckTablesHttpPostOut">
+    <wsdl:part name="Body" element="tns:boolean" />
+  </wsdl:message>
+  <wsdl:message name="InsertDataHttpPostIn">
+    <wsdl:part name="userID" type="s:string" />
+    <wsdl:part name="aTaskName" type="s:string" />
+    <wsdl:part name="new_xml_string" type="s:string" />
+    <wsdl:part name="editpage" type="s:string" />
+    <wsdl:part name="desc" type="s:string" />
+    <wsdl:part name="exporttype" type="s:string" />
+    <wsdl:part name="offset" type="s:string" />
+    <wsdl:part name="title" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="InsertDataHttpPostOut" />
+  <wsdl:message name="ReportsFailedToSendDataHttpPostIn">
+    <wsdl:part name="Run_Id" type="s:string" />
+    <wsdl:part name="nextRunTime" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="ReportsFailedToSendDataHttpPostOut" />
+  <wsdl:message name="StartReportHttpPostIn">
+    <wsdl:part name="Run_Id" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="StartReportHttpPostOut" />
+  <wsdl:message name="UpdateCompletionDataHttpPostIn">
+    <wsdl:part name="runId" type="s:string" />
+    <wsdl:part name="onceOnly" type="s:string" />
+    <wsdl:part name="nextDateTime" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="UpdateCompletionDataHttpPostOut" />
+  <wsdl:message name="UpdateNexRunTimeDataHttpPostIn">
+    <wsdl:part name="runId" type="s:string" />
+    <wsdl:part name="nextTime" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="UpdateNexRunTimeDataHttpPostOut" />
+  <wsdl:portType name="FAReportingServiceSoap">
+    <wsdl:operation name="CloseRptRASConnection">
+      <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Close Crystal Report</wsdl:documentation>
+      <wsdl:input message="tns:CloseRptRASConnectionSoapIn" />
+      <wsdl:output message="tns:CloseRptRASConnectionSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetReportAsByte">
+      <wsdl:input message="tns:GetReportAsByteSoapIn" />
+      <wsdl:output message="tns:GetReportAsByteSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetTimeout">
+      <wsdl:input message="tns:GetTimeoutSoapIn" />
+      <wsdl:output message="tns:GetTimeoutSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="ConvertRpts">
+      <wsdl:input message="tns:ConvertRptsSoapIn" />
+      <wsdl:output message="tns:ConvertRptsSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetData">
+      <wsdl:input message="tns:GetDataSoapIn" />
+      <wsdl:output message="tns:GetDataSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="Conversion_GetData">
+      <wsdl:input message="tns:Conversion_GetDataSoapIn" />
+      <wsdl:output message="tns:Conversion_GetDataSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="CheckTables">
+      <wsdl:input message="tns:CheckTablesSoapIn" />
+      <wsdl:output message="tns:CheckTablesSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="InsertData">
+      <wsdl:input message="tns:InsertDataSoapIn" />
+      <wsdl:output message="tns:InsertDataSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="ReportsFailedToSendData">
+      <wsdl:input message="tns:ReportsFailedToSendDataSoapIn" />
+      <wsdl:output message="tns:ReportsFailedToSendDataSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="StartReport">
+      <wsdl:input message="tns:StartReportSoapIn" />
+      <wsdl:output message="tns:StartReportSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="UpdateCompletionData">
+      <wsdl:input message="tns:UpdateCompletionDataSoapIn" />
+      <wsdl:output message="tns:UpdateCompletionDataSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="UpdateNexRunTimeData">
+      <wsdl:input message="tns:UpdateNexRunTimeDataSoapIn" />
+      <wsdl:output message="tns:UpdateNexRunTimeDataSoapOut" />
+    </wsdl:operation>
+  </wsdl:portType>
+  <wsdl:portType name="FAReportingServiceHttpGet">
+    <wsdl:operation name="CloseRptRASConnection">
+      <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Close Crystal Report</wsdl:documentation>
+      <wsdl:input message="tns:CloseRptRASConnectionHttpGetIn" />
+      <wsdl:output message="tns:CloseRptRASConnectionHttpGetOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetReportAsByte">
+      <wsdl:input message="tns:GetReportAsByteHttpGetIn" />
+      <wsdl:output message="tns:GetReportAsByteHttpGetOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetTimeout">
+      <wsdl:input message="tns:GetTimeoutHttpGetIn" />
+      <wsdl:output message="tns:GetTimeoutHttpGetOut" />
+    </wsdl:operation>
+    <wsdl:operation name="ConvertRpts">
+      <wsdl:input message="tns:ConvertRptsHttpGetIn" />
+      <wsdl:output message="tns:ConvertRptsHttpGetOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetData">
+      <wsdl:input message="tns:GetDataHttpGetIn" />
+      <wsdl:output message="tns:GetDataHttpGetOut" />
+    </wsdl:operation>
+    <wsdl:operation name="Conversion_GetData">
+      <wsdl:input message="tns:Conversion_GetDataHttpGetIn" />
+      <wsdl:output message="tns:Conversion_GetDataHttpGetOut" />
+    </wsdl:operation>
+    <wsdl:operation name="CheckTables">
+      <wsdl:input message="tns:CheckTablesHttpGetIn" />
+      <wsdl:output message="tns:CheckTablesHttpGetOut" />
+    </wsdl:operation>
+    <wsdl:operation name="InsertData">
+      <wsdl:input message="tns:InsertDataHttpGetIn" />
+      <wsdl:output message="tns:InsertDataHttpGetOut" />
+    </wsdl:operation>
+    <wsdl:operation name="ReportsFailedToSendData">
+      <wsdl:input message="tns:ReportsFailedToSendDataHttpGetIn" />
+      <wsdl:output message="tns:ReportsFailedToSendDataHttpGetOut" />
+    </wsdl:operation>
+    <wsdl:operation name="StartReport">
+      <wsdl:input message="tns:StartReportHttpGetIn" />
+      <wsdl:output message="tns:StartReportHttpGetOut" />
+    </wsdl:operation>
+    <wsdl:operation name="UpdateCompletionData">
+      <wsdl:input message="tns:UpdateCompletionDataHttpGetIn" />
+      <wsdl:output message="tns:UpdateCompletionDataHttpGetOut" />
+    </wsdl:operation>
+    <wsdl:operation name="UpdateNexRunTimeData">
+      <wsdl:input message="tns:UpdateNexRunTimeDataHttpGetIn" />
+      <wsdl:output message="tns:UpdateNexRunTimeDataHttpGetOut" />
+    </wsdl:operation>
+  </wsdl:portType>
+  <wsdl:portType name="FAReportingServiceHttpPost">
+    <wsdl:operation name="CloseRptRASConnection">
+      <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Close Crystal Report</wsdl:documentation>
+      <wsdl:input message="tns:CloseRptRASConnectionHttpPostIn" />
+      <wsdl:output message="tns:CloseRptRASConnectionHttpPostOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetReportAsByte">
+      <wsdl:input message="tns:GetReportAsByteHttpPostIn" />
+      <wsdl:output message="tns:GetReportAsByteHttpPostOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetTimeout">
+      <wsdl:input message="tns:GetTimeoutHttpPostIn" />
+      <wsdl:output message="tns:GetTimeoutHttpPostOut" />
+    </wsdl:operation>
+    <wsdl:operation name="ConvertRpts">
+      <wsdl:input message="tns:ConvertRptsHttpPostIn" />
+      <wsdl:output message="tns:ConvertRptsHttpPostOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetData">
+      <wsdl:input message="tns:GetDataHttpPostIn" />
+      <wsdl:output message="tns:GetDataHttpPostOut" />
+    </wsdl:operation>
+    <wsdl:operation name="Conversion_GetData">
+      <wsdl:input message="tns:Conversion_GetDataHttpPostIn" />
+      <wsdl:output message="tns:Conversion_GetDataHttpPostOut" />
+    </wsdl:operation>
+    <wsdl:operation name="CheckTables">
+      <wsdl:input message="tns:CheckTablesHttpPostIn" />
+      <wsdl:output message="tns:CheckTablesHttpPostOut" />
+    </wsdl:operation>
+    <wsdl:operation name="InsertData">
+      <wsdl:input message="tns:InsertDataHttpPostIn" />
+      <wsdl:output message="tns:InsertDataHttpPostOut" />
+    </wsdl:operation>
+    <wsdl:operation name="ReportsFailedToSendData">
+      <wsdl:input message="tns:ReportsFailedToSendDataHttpPostIn" />
+      <wsdl:output message="tns:ReportsFailedToSendDataHttpPostOut" />
+    </wsdl:operation>
+    <wsdl:operation name="StartReport">
+      <wsdl:input message="tns:StartReportHttpPostIn" />
+      <wsdl:output message="tns:StartReportHttpPostOut" />
+    </wsdl:operation>
+    <wsdl:operation name="UpdateCompletionData">
+      <wsdl:input message="tns:UpdateCompletionDataHttpPostIn" />
+      <wsdl:output message="tns:UpdateCompletionDataHttpPostOut" />
+    </wsdl:operation>
+    <wsdl:operation name="UpdateNexRunTimeData">
+      <wsdl:input message="tns:UpdateNexRunTimeDataHttpPostIn" />
+      <wsdl:output message="tns:UpdateNexRunTimeDataHttpPostOut" />
+    </wsdl:operation>
+  </wsdl:portType>
+  <wsdl:binding name="FAReportingServiceSoap" type="tns:FAReportingServiceSoap">
+    <soap:binding transport="http://schemas.xmlsoap.org/soap/http" />
+    <wsdl:operation name="CloseRptRASConnection">
+      <soap:operation soapAction="http://tempuri.org/CloseRptRASConnection" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetReportAsByte">
+      <soap:operation soapAction="http://tempuri.org/GetReportAsByte" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetTimeout">
+      <soap:operation soapAction="http://tempuri.org/GetTimeout" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="ConvertRpts">
+      <soap:operation soapAction="http://tempuri.org/ConvertRpts" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetData">
+      <soap:operation soapAction="http://tempuri.org/GetData" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="Conversion_GetData">
+      <soap:operation soapAction="http://tempuri.org/Conversion_GetData" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="CheckTables">
+      <soap:operation soapAction="http://tempuri.org/CheckTables" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="InsertData">
+      <soap:operation soapAction="http://tempuri.org/InsertData" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="ReportsFailedToSendData">
+      <soap:operation soapAction="http://tempuri.org/ReportsFailedToSendData" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="StartReport">
+      <soap:operation soapAction="http://tempuri.org/StartReport" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="UpdateCompletionData">
+      <soap:operation soapAction="http://tempuri.org/UpdateCompletionData" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="UpdateNexRunTimeData">
+      <soap:operation soapAction="http://tempuri.org/UpdateNexRunTimeData" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:binding name="FAReportingServiceSoap12" type="tns:FAReportingServiceSoap">
+    <soap12:binding transport="http://schemas.xmlsoap.org/soap/http" />
+    <wsdl:operation name="CloseRptRASConnection">
+      <soap12:operation soapAction="http://tempuri.org/CloseRptRASConnection" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetReportAsByte">
+      <soap12:operation soapAction="http://tempuri.org/GetReportAsByte" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetTimeout">
+      <soap12:operation soapAction="http://tempuri.org/GetTimeout" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="ConvertRpts">
+      <soap12:operation soapAction="http://tempuri.org/ConvertRpts" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetData">
+      <soap12:operation soapAction="http://tempuri.org/GetData" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="Conversion_GetData">
+      <soap12:operation soapAction="http://tempuri.org/Conversion_GetData" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="CheckTables">
+      <soap12:operation soapAction="http://tempuri.org/CheckTables" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="InsertData">
+      <soap12:operation soapAction="http://tempuri.org/InsertData" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="ReportsFailedToSendData">
+      <soap12:operation soapAction="http://tempuri.org/ReportsFailedToSendData" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="StartReport">
+      <soap12:operation soapAction="http://tempuri.org/StartReport" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="UpdateCompletionData">
+      <soap12:operation soapAction="http://tempuri.org/UpdateCompletionData" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="UpdateNexRunTimeData">
+      <soap12:operation soapAction="http://tempuri.org/UpdateNexRunTimeData" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:binding name="FAReportingServiceHttpGet" type="tns:FAReportingServiceHttpGet">
+    <http:binding verb="GET" />
+    <wsdl:operation name="CloseRptRASConnection">
+      <http:operation location="/CloseRptRASConnection" />
+      <wsdl:input>
+        <http:urlEncoded />
+      </wsdl:input>
+      <wsdl:output />
+    </wsdl:operation>
+    <wsdl:operation name="GetReportAsByte">
+      <http:operation location="/GetReportAsByte" />
+      <wsdl:input>
+        <http:urlEncoded />
+      </wsdl:input>
+      <wsdl:output>
+        <mime:mimeXml part="Body" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetTimeout">
+      <http:operation location="/GetTimeout" />
+      <wsdl:input>
+        <http:urlEncoded />
+      </wsdl:input>
+      <wsdl:output>
+        <mime:mimeXml part="Body" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="ConvertRpts">
+      <http:operation location="/ConvertRpts" />
+      <wsdl:input>
+        <http:urlEncoded />
+      </wsdl:input>
+      <wsdl:output />
+    </wsdl:operation>
+    <wsdl:operation name="GetData">
+      <http:operation location="/GetData" />
+      <wsdl:input>
+        <http:urlEncoded />
+      </wsdl:input>
+      <wsdl:output>
+        <mime:mimeXml part="Body" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="Conversion_GetData">
+      <http:operation location="/Conversion_GetData" />
+      <wsdl:input>
+        <http:urlEncoded />
+      </wsdl:input>
+      <wsdl:output>
+        <mime:mimeXml part="Body" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="CheckTables">
+      <http:operation location="/CheckTables" />
+      <wsdl:input>
+        <http:urlEncoded />
+      </wsdl:input>
+      <wsdl:output>
+        <mime:mimeXml part="Body" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="InsertData">
+      <http:operation location="/InsertData" />
+      <wsdl:input>
+        <http:urlEncoded />
+      </wsdl:input>
+      <wsdl:output />
+    </wsdl:operation>
+    <wsdl:operation name="ReportsFailedToSendData">
+      <http:operation location="/ReportsFailedToSendData" />
+      <wsdl:input>
+        <http:urlEncoded />
+      </wsdl:input>
+      <wsdl:output />
+    </wsdl:operation>
+    <wsdl:operation name="StartReport">
+      <http:operation location="/StartReport" />
+      <wsdl:input>
+        <http:urlEncoded />
+      </wsdl:input>
+      <wsdl:output />
+    </wsdl:operation>
+    <wsdl:operation name="UpdateCompletionData">
+      <http:operation location="/UpdateCompletionData" />
+      <wsdl:input>
+        <http:urlEncoded />
+      </wsdl:input>
+      <wsdl:output />
+    </wsdl:operation>
+    <wsdl:operation name="UpdateNexRunTimeData">
+      <http:operation location="/UpdateNexRunTimeData" />
+      <wsdl:input>
+        <http:urlEncoded />
+      </wsdl:input>
+      <wsdl:output />
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:binding name="FAReportingServiceHttpPost" type="tns:FAReportingServiceHttpPost">
+    <http:binding verb="POST" />
+    <wsdl:operation name="CloseRptRASConnection">
+      <http:operation location="/CloseRptRASConnection" />
+      <wsdl:input>
+        <mime:content type="application/x-www-form-urlencoded" />
+      </wsdl:input>
+      <wsdl:output />
+    </wsdl:operation>
+    <wsdl:operation name="GetReportAsByte">
+      <http:operation location="/GetReportAsByte" />
+      <wsdl:input>
+        <mime:content type="application/x-www-form-urlencoded" />
+      </wsdl:input>
+      <wsdl:output>
+        <mime:mimeXml part="Body" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetTimeout">
+      <http:operation location="/GetTimeout" />
+      <wsdl:input>
+        <mime:content type="application/x-www-form-urlencoded" />
+      </wsdl:input>
+      <wsdl:output>
+        <mime:mimeXml part="Body" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="ConvertRpts">
+      <http:operation location="/ConvertRpts" />
+      <wsdl:input>
+        <mime:content type="application/x-www-form-urlencoded" />
+      </wsdl:input>
+      <wsdl:output />
+    </wsdl:operation>
+    <wsdl:operation name="GetData">
+      <http:operation location="/GetData" />
+      <wsdl:input>
+        <mime:content type="application/x-www-form-urlencoded" />
+      </wsdl:input>
+      <wsdl:output>
+        <mime:mimeXml part="Body" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="Conversion_GetData">
+      <http:operation location="/Conversion_GetData" />
+      <wsdl:input>
+        <mime:content type="application/x-www-form-urlencoded" />
+      </wsdl:input>
+      <wsdl:output>
+        <mime:mimeXml part="Body" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="CheckTables">
+      <http:operation location="/CheckTables" />
+      <wsdl:input>
+        <mime:content type="application/x-www-form-urlencoded" />
+      </wsdl:input>
+      <wsdl:output>
+        <mime:mimeXml part="Body" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="InsertData">
+      <http:operation location="/InsertData" />
+      <wsdl:input>
+        <mime:content type="application/x-www-form-urlencoded" />
+      </wsdl:input>
+      <wsdl:output />
+    </wsdl:operation>
+    <wsdl:operation name="ReportsFailedToSendData">
+      <http:operation location="/ReportsFailedToSendData" />
+      <wsdl:input>
+        <mime:content type="application/x-www-form-urlencoded" />
+      </wsdl:input>
+      <wsdl:output />
+    </wsdl:operation>
+    <wsdl:operation name="StartReport">
+      <http:operation location="/StartReport" />
+      <wsdl:input>
+        <mime:content type="application/x-www-form-urlencoded" />
+      </wsdl:input>
+      <wsdl:output />
+    </wsdl:operation>
+    <wsdl:operation name="UpdateCompletionData">
+      <http:operation location="/UpdateCompletionData" />
+      <wsdl:input>
+        <mime:content type="application/x-www-form-urlencoded" />
+      </wsdl:input>
+      <wsdl:output />
+    </wsdl:operation>
+    <wsdl:operation name="UpdateNexRunTimeData">
+      <http:operation location="/UpdateNexRunTimeData" />
+      <wsdl:input>
+        <mime:content type="application/x-www-form-urlencoded" />
+      </wsdl:input>
+      <wsdl:output />
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:service name="FAReportingService">
+    <wsdl:port name="FAReportingServiceSoap" binding="tns:FAReportingServiceSoap">
+      <soap:address location="http://localhost/InfoCenter/Reporting/FAReportingService.asmx" />
+    </wsdl:port>
+    <wsdl:port name="FAReportingServiceSoap12" binding="tns:FAReportingServiceSoap12">
+      <soap12:address location="http://localhost/InfoCenter/Reporting/FAReportingService.asmx" />
+    </wsdl:port>
+    <wsdl:port name="FAReportingServiceHttpGet" binding="tns:FAReportingServiceHttpGet">
+      <http:address location="http://localhost/InfoCenter/Reporting/FAReportingService.asmx" />
+    </wsdl:port>
+    <wsdl:port name="FAReportingServiceHttpPost" binding="tns:FAReportingServiceHttpPost">
+      <http:address location="http://localhost/InfoCenter/Reporting/FAReportingService.asmx" />
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>

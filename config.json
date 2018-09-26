@@ -1,6 +1,9 @@
-{"_host":"Avian","_homedirectory":"cake", "_checkoutdirectories": [
-  {"dir":"dir1"},
-  {"dir":"dir2"},
-  {"dir":"dir3"},
-  {"dir":"dir4"}
+{"host":"http://fabuildsrv2:8080/svn/fasuite/trunk/", "_checkoutdirectories": [
+  {"dir":"InfoCenterBase/AMBusinessFacades", "checkoutdir": "D:\\SVN\\SVN\\InfoCenterBase\\AMBusinessFacades"},
+  {"dir":"InfoCenterBase/AMDataAccess", "checkoutdir": "D:\\SVN\\SVN\\InfoCenterBase\\AMDataAccess"},
+  {"dir":"InfoCenterBase/AMTransferObjects", "checkoutdir": "D:\\SVN\\SVN\\InfoCenterBase\\AMTransferObjects"},
+  {"dir":"InfoCenterBase/FABusinessFacade", "checkoutdir": "D:\\SVN\\SVN\\InfoCenterBase\\FABusinessFacade"},
+  {"dir":"InfoCenterBase/FABusinessObjects", "checkoutdir": "D:\\SVN\\SVN\\InfoCenterBase\\FABusinessObjects"},
+  {"dir":"InfoCenterBase/FAPortal", "checkoutdir": "D:\\SVN\\SVN\\InfoCenterBase\\FAPortal"},
+  {"dir":"InfoCenterBase/InfoCenter", "checkoutdir": "D:\\SVN\\SVN\\InfoCenterBase\\InfoCenter"}
 ]}

@@ -1,0 +1,1040 @@
+﻿using FASuite.AMTransferObjects;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Web.Services.Protocols;
+
+namespace FASuite.Scheduler.Tasks
+{
+    public class ReportTask : TaskBase
+    {
+        private static System.Data.DataTable ReportsScheduled = null;
+        public static List<string> listItem = new List<string>();
+        public static Logging reportLog = null;
+
+        public ReportTask() { if(reportLog == null) reportLog = new Logging("ReportTask"); }
+        public override void ExecuteTask(object TaskRecord)
+        {
+            ReportsScheduled = GetData();
+
+            if (ReportsScheduled == null)
+            {
+                string m = "Unable to request scheduled reports.";
+                ReportTask.reportLog.ErrorLog(m);
+            }
+            else
+            {
+                ReportTask.reportLog.TraceLog("Scheduled reports: " + ReportsScheduled.Rows.Count.ToString());
+
+                if (ReportsScheduled.Rows.Count > 0)
+                {
+                    ReportTask.reportLog.TraceLog("Updating schedule...");
+                    DataView viewUnscheduledReports = new DataView(ReportsScheduled);
+                    string sql = "Next_Run_Time IS NULL OR Next_Run_Time = #" + DateTime.MinValue + "#";
+                    viewUnscheduledReports.RowFilter = sql;
+                    viewUnscheduledReports.Sort = "X_DATETIME_INSERT ASC";
+                    DataTable tblUnscheduledReports = viewUnscheduledReports.ToTable();
+                    ReportTask.reportLog.TraceLog(String.Format("Found {0} reports with no next_run_time", tblUnscheduledReports.Rows.Count.ToString()));
+
+                    foreach (DataRow row in tblUnscheduledReports.Rows)
+                    {
+                        string xmlString = row["XML_STRING"].ToString();
+                        string runId = row["REPORT_RUN_ID"].ToString();
+                        ReportTask.reportLog.TraceLog(String.Format("Determining next run time for {0}", xmlString), runId);
+
+                        DateTime nextDateTime = DateTime.MaxValue;
+
+                        try
+                        {
+                            nextDateTime = Scheduler.GetNextScheduledDateTime(row["XML_STRING"].ToString());
+                        }
+                        catch
+                        {
+                            ReportTask.reportLog.ErrorLog(String.Format("Error setting Next_Run_Time", runId));
+                        }
+
+                        ReportTask.reportLog.TraceLog("Next run time is " + nextDateTime.ToString(FACommon.Utils.Dates.DATETIME_FORMAT_24HOUR));
+
+                        UpdateNextRunTime(row["REPORT_RUN_ID"].ToString(), nextDateTime);
+
+                        ReportTask.reportLog.TraceLog("Next run time updated.", runId);
+                    }
+
+                    ReportTask.reportLog.TraceLog("Running scheduled reports.");
+
+                    DataView viewScheduledReports = new DataView(ReportsScheduled);
+                    sql = "Next_Run_Time < #" + DateTime.Now + "# AND Next_Run_Time IS NOT NULL AND Next_Run_Time <> #" + DateTime.MinValue + "# AND ISDISABLED = 'N'";
+                    viewScheduledReports.RowFilter = sql;
+                    viewScheduledReports.Sort = "Next_Run_Time ASC";
+                    DataTable tblScheduledReports = viewScheduledReports.ToTable();
+                    ReportTask.reportLog.TraceLog(String.Format("Found {0} reports to run now.", tblScheduledReports.Rows.Count.ToString()));
+                    if (tblScheduledReports.Rows.Count > 0)
+                    {
+                        CreateReport Report = new CreateReport(tblScheduledReports, listItem);
+                    }
+                }
+            }
+        }
+        public DataTable GetData()
+        {
+            ReportTask.reportLog.TraceLog("Calling web service GetData...");
+            try
+            {
+                DataSet WebData = new DataSet();
+                using (var webService = GetReportingServiceHandle())
+                {
+                    try
+                    {
+                        Type type = webService.GetType();
+                        MethodInfo methodInfo = type.GetMethod("GetData");
+                        object[] parametersArray = new object[] { DateTime.Now };
+                        WebData = invokeDataTableMethod(webService, methodInfo, parametersArray, 0);
+                        //WebData = webService.GetData(DateTime.Now);
+                    }
+                    catch (Exception ex)
+                    {
+                        ReportTask.reportLog.TraceLog("GetData web service call failed. \n" + ex.ToString());
+                    }
+                }
+                ReportTask.reportLog.TraceLog("GetData response received.");
+                return WebData.Tables[0];
+            }
+            catch (System.Net.WebException ex)
+            {
+                ReportTask.reportLog.ErrorLog("Error getting data " + ex.Message, "");
+                ReportTask.reportLog.ErrorLog("web exception " + ex.InnerException, "");
+            }
+            catch (Exception e)
+            {
+                ReportTask.reportLog.ErrorLog("Error getting data " + e.Message, "");
+                ReportTask.reportLog.ErrorLog("general exception " + e.InnerException, "");
+            }
+            return null;
+        }
+        public static FAReporting.FAReportingService GetReportingServiceHandle(int attemps = 0)
+        {
+            FAReporting.FAReportingService webServiceOjbect = null;
+            bool success = true;
+
+            try
+            {
+                webServiceOjbect = new FAReporting.FAReportingService();
+                string url = JobScheduler.WebServiceURL + "/Reporting/FAReportingService.asmx";
+                ReportTask.reportLog.TraceLog(url);
+                webServiceOjbect.Url = url;
+                if (JobScheduler.useWindowsLogOn)
+                {
+                    setCredentials(webServiceOjbect);
+                }
+            }
+            catch (Exception e)
+            {
+                success = false;
+                ReportTask.reportLog.ErrorLog("Error " + e.Message, "");
+            }
+
+            if (!success && attemps < 3)
+            {
+                attemps++;
+                System.Threading.Thread.Sleep(60000);
+                GetReportingServiceHandle(attemps);
+            }
+
+            if (webServiceOjbect == null)
+                webServiceOjbect = new FAReporting.FAReportingService();
+
+            return webServiceOjbect;
+        }
+        public static void setCredentials(FAReporting.FAReportingService webServiceOjbect)
+        {
+            webServiceOjbect.Credentials = System.Net.CredentialCache.DefaultCredentials;
+            webServiceOjbect.PreAuthenticate = true;
+            webServiceOjbect.AllowAutoRedirect = true;
+        }
+        private static DataSet invokeDataTableMethod(FASuite.Scheduler.FAReporting.FAReportingService instanceType, MethodInfo methodInfo, object[] parameters, int attemps)
+        {
+            bool success = true;
+            DataSet WebData = new DataSet();
+
+            try
+            {
+                if (parameters == null || parameters.Length == 0)
+                {
+
+                    WebData = (DataSet)methodInfo.Invoke(instanceType, null);
+                }
+                else
+                {
+                    WebData = (DataSet)methodInfo.Invoke(instanceType, parameters);
+                }
+            }
+            catch (System.Net.WebException ex)
+            {
+                success = false;
+                ReportTask.reportLog.ErrorLog("Error " + ex.Message, "");
+                ReportTask.reportLog.ErrorLog("web exception " + ex.InnerException, "");
+            }
+            catch (Exception e)
+            {
+                success = false;
+                ReportTask.reportLog.ErrorLog("Error " + e.Message, "");
+                ReportTask.reportLog.ErrorLog("general exception " + e.InnerException, "");
+            }
+
+            if (!success && attemps < 3)
+            {
+                attemps++;
+                System.Threading.Thread.Sleep(60000);
+                invokeMethod(instanceType, methodInfo, parameters, attemps);
+            }
+
+            if (WebData.Tables != null && WebData.Tables.Count == 0)
+            {
+                DataTable blankTable = new DataTable();
+                WebData.Tables.Add(blankTable);
+            }
+
+            return WebData;
+        }
+        private static void invokeMethod(FASuite.Scheduler.FAReporting.FAReportingService instanceType, MethodInfo methodInfo, Object[] parameters, int attemps)
+        {
+            bool success = true;
+
+            try
+            {
+                if (parameters == null || parameters.Length == 0)
+                {
+                    methodInfo.Invoke(instanceType, null);
+                }
+                else
+                {
+                    methodInfo.Invoke(instanceType, parameters);
+                }
+            }
+            catch (System.Net.WebException ex)
+            {
+                ReportTask.reportLog.ErrorLog("Error " + ex.Message, "");
+                ReportTask.reportLog.ErrorLog("web exception " + ex.InnerException, "");
+                success = false;
+            }
+            catch (Exception e)
+            {
+                ReportTask.reportLog.ErrorLog("Error " + e.Message, "");
+                ReportTask.reportLog.ErrorLog("general exception " + e.InnerException, "");
+                success = false;
+            }
+
+            if (!success && attemps < 3)
+            {
+                attemps++;
+                System.Threading.Thread.Sleep(60000);
+                invokeMethod(instanceType, methodInfo, parameters, attemps);
+            }
+        }
+        public static int invokeInitMethod(FASuite.Scheduler.FAReporting.FAReportingService instanceType, MethodInfo methodInfo, Object[] parameters, int attemps)
+        {
+            bool success = true;
+            int intVal = 0;
+
+            try
+            {
+                if (parameters == null || parameters.Length == 0)
+                {
+                    intVal = (int)methodInfo.Invoke(instanceType, null);
+                }
+                else
+                {
+                    intVal = (int)methodInfo.Invoke(instanceType, parameters);
+                }
+            }
+            catch (System.Net.WebException ex)
+            {
+                ReportTask.reportLog.ErrorLog("Error " + ex.Message, "");
+                ReportTask.reportLog.ErrorLog("web exception " + ex.InnerException, "");
+                success = false;
+            }
+            catch (Exception e)
+            {
+                ReportTask.reportLog.ErrorLog("Error " + e.Message, "");
+                ReportTask.reportLog.ErrorLog("general exception " + e.InnerException, "");
+                success = false;
+            }
+
+            if (!success && attemps < 3)
+            {
+                attemps++;
+                System.Threading.Thread.Sleep(60000);
+                invokeMethod(instanceType, methodInfo, parameters, attemps);
+            }
+
+            return intVal;
+        }
+        public static Byte[] invokeByteMethod(FASuite.Scheduler.FAReporting.FAReportingService instanceType, MethodInfo methodInfo, object[] parameters, int attemps)
+        {
+            bool success = true;
+            Byte[] WebData = null;
+
+            try
+            {
+                if (parameters == null || parameters.Length == 0)
+                {
+
+                    WebData = (Byte[])methodInfo.Invoke(instanceType, null);
+                }
+                else
+                {
+                    WebData = (Byte[])methodInfo.Invoke(instanceType, parameters);
+                }
+            }
+            catch (System.Net.WebException ex)
+            {
+                success = false;
+                ReportTask.reportLog.ErrorLog("Error " + ex.Message, "");
+                ReportTask.reportLog.ErrorLog("web exception " + ex.InnerException, "");
+            }
+            catch (Exception e)
+            {
+                success = false;
+                ReportTask.reportLog.ErrorLog("Error " + e.Message, "");
+                ReportTask.reportLog.ErrorLog("general exception " + e.InnerException, "");
+            }
+
+            if (!success && attemps < 3)
+            {
+                attemps++;
+                System.Threading.Thread.Sleep(60000);
+                invokeMethod(instanceType, methodInfo, parameters, attemps);
+            }
+
+            if (WebData == null)
+            {
+                WebData = new Byte[0];
+            }
+
+            return WebData;
+        }
+        public static void UpdateNextRunTime(string runId, DateTime nextTime)
+        {
+            ReportTask.reportLog.TraceLog("Calling web service UpdateNexRunTimeData...");
+            try
+            {
+                using (var webService = GetReportingServiceHandle())
+                {
+                    try
+                    {
+                        Type type = webService.GetType();
+                        MethodInfo methodInfo = type.GetMethod("UpdateNexRunTimeData");
+                        object[] parametersArray = new object[] { runId, nextTime };
+                        invokeMethod(webService, methodInfo, parametersArray, 0);
+                        //webService.UpdateNexRunTimeData(runId, nextTime);
+                    }
+                    catch (Exception ex)
+                    {
+                        ReportTask.reportLog.TraceLog("UpdateNextRunTimeData web service call failed. \n" + ex.ToString());
+                    }
+                }
+                ReportTask.reportLog.TraceLog("UpdateNexRunTimeData response received.");
+            }
+            catch (System.Net.WebException ex)
+            {
+                ReportTask.reportLog.ErrorLog("Error updating data " + ex.Message, runId);
+            }
+            catch (Exception e)
+            {
+                ReportTask.reportLog.ErrorLog("Error updating data " + e.Message, runId);
+            }
+        }
+        public static String GetTempPath()
+        {
+            Random rndNum = new Random();
+            String strTempPath = System.IO.Path.GetTempPath() + JobSchedulerService.FASUITE_REPORTS_TEMP_FOLDER;
+            String strSubDir = System.DateTime.Now.ToString("yyyyMMddHHmmss");
+
+            while (System.IO.Directory.Exists(String.Format(@"{0}\{1}", strTempPath, strSubDir)))
+            {
+                strSubDir += rndNum.Next().ToString();
+            }
+
+            if (!System.IO.Directory.Exists(strTempPath))
+            {
+                try
+                {
+                    System.IO.Directory.CreateDirectory(strTempPath);
+                }
+                catch (Exception ex)
+                {
+                    ReportTask.reportLog.ErrorLog("Unable to create temporary reports root folder: " + strTempPath + " --- " + ex.Message);
+                }
+            }
+
+            strTempPath += @"\" + strSubDir + @"\";
+            try
+            {
+                System.IO.Directory.CreateDirectory(strTempPath);
+            }
+            catch (Exception ex)
+            {
+                ReportTask.reportLog.ErrorLog("Unable to create temporary reports folder: " + strTempPath + " --- " + ex.Message);
+            }
+            return strTempPath;
+        }
+        public static void InsertData(string userID, string aTaskName, string new_xml_string, string editpage, string desc, string exporttype, string offset, string title, string file)
+        {
+            ReportTask.reportLog.TraceLog("Calling web service InsertData...");
+            try
+            {
+                using (var webService = GetReportingServiceHandle())
+                {
+                    try
+                    {
+                        Type type = webService.GetType();
+                        MethodInfo methodInfo = type.GetMethod("InsertData");
+                        object[] parametersArray = new object[] { userID, aTaskName, new_xml_string, editpage, desc, exporttype, offset, title };
+                        invokeMethod(webService, methodInfo, parametersArray, 0);
+                        //webService.InsertData(userID, aTaskName, new_xml_string, editpage, desc, exporttype, offset, title);
+                    }
+                    catch (Exception ex)
+                    {
+                        ReportTask.reportLog.TraceLog("InsertData web service call failed. \n" + ex.ToString());
+                    }
+                }
+                ReportTask.reportLog.TraceLog("InsertData response received.");
+            }
+            catch (System.Net.WebException ex)
+            {
+                ReportTask.reportLog.ErrorLog("Error inserting data " + ex.Message + " File: " + file, "");
+            }
+            catch (Exception e)
+            {
+                ReportTask.reportLog.ErrorLog("Error inserting data " + e.Message + " File: " + file, "");
+            }
+        }
+        public static void UpdateCompletion(string runId, bool onceOnly, string nextDateTime)
+        {
+            ReportTask.reportLog.TraceLog("Calling web service UpdateCompletionData...");
+            try
+            {
+                using (var webService = GetReportingServiceHandle())
+                {
+                    try
+                    {
+                        Type type = webService.GetType();
+                        MethodInfo methodInfo = type.GetMethod("UpdateCompletionData");
+                        object[] parametersArray = new object[] { runId, onceOnly, nextDateTime };
+                        invokeMethod(webService, methodInfo, parametersArray, 0);
+                        //webService.UpdateCompletionData(runId, onceOnly, nextDateTime);
+                    }
+                    catch (Exception ex)
+                    {
+                        ReportTask.reportLog.TraceLog("UpdateCompletionData web service call failed. \n" + ex.ToString());
+                    }
+                }
+                ReportTask.reportLog.TraceLog("UpdateCompletion response received.");
+            }
+            catch (System.Net.WebException ex)
+            {
+                ReportTask.reportLog.ErrorLog("Error updating Completion data " + ex.Message, runId);
+            }
+            catch (Exception e)
+            {
+                ReportTask.reportLog.ErrorLog("Error updating Completion data " + e.Message, runId);
+            }
+        }
+        public static void ReportsFailedToSend(string runId, DateTime nextDateTime)
+        {
+            ReportTask.reportLog.TraceLog("Calling web service ReportsFailedToSendData...");
+            try
+            {
+                using (var webService = GetReportingServiceHandle())
+                {
+                    try
+                    {
+                        Type type = webService.GetType();
+                        MethodInfo methodInfo = type.GetMethod("ReportsFailedToSendData");
+                        object[] parametersArray = new object[] { runId, nextDateTime };
+                        invokeMethod(webService, methodInfo, parametersArray, 0);
+                        //webService.ReportsFailedToSendData(runId, nextDateTime);
+                    }
+                    catch (Exception ex)
+                    {
+                        ReportTask.reportLog.TraceLog("ReportsFailedToSendData web service call failed. \n" + ex.ToString());
+                    }
+                }
+                ReportTask.reportLog.TraceLog("ReportsFailedToSendData response received.");
+            }
+            catch (System.Net.WebException ex)
+            {
+                ReportTask.reportLog.ErrorLog("Error in ReportsFailedToSend Web Service call " + ex.Message, runId);
+            }
+            catch (Exception e)
+            {
+                ReportTask.reportLog.ErrorLog("Error in ReportsFailedToSend Web Service call " + e.Message, runId);
+            }
+        }
+        public static void StartReport(string runId)
+        {
+            ReportTask.reportLog.TraceLog("Calling web service StartReport...");
+            try
+            {
+                using (var webService = GetReportingServiceHandle())
+                {
+                    try
+                    {
+                        Type type = webService.GetType();
+                        MethodInfo methodInfo = type.GetMethod("StartReport");
+                        object[] parametersArray = new object[] { runId };
+                        invokeMethod(webService, methodInfo, parametersArray, 0);
+                        //webService.StartReport(runId);
+                    }
+                    catch (Exception ex)
+                    {
+                        ReportTask.reportLog.TraceLog("StartReport web service call failed. \n" + ex.ToString());
+                    }
+                }
+                ReportTask.reportLog.TraceLog("StartReport response received.");
+            }
+            catch (System.Net.WebException ex)
+            {
+                ReportTask.reportLog.ErrorLog("Error updating data " + ex.Message, runId);
+            }
+            catch (Exception e)
+            {
+                ReportTask.reportLog.ErrorLog("Error updating data " + e.Message, runId);
+            }
+        }
+        public static void convertExistingRecords()
+        {
+            if (reportLog == null)
+                reportLog = new Logging("ReportTask");
+
+            System.Threading.Thread.Sleep(20000);
+            try
+            {
+                using (var webService = GetReportingServiceHandle())
+                {
+                    ReportTask.reportLog.TraceLog("Converting reports...");
+                    try
+                    {
+                        Type type = webService.GetType();
+                        MethodInfo methodInfo = type.GetMethod("ConvertRpts");
+                        invokeMethod(webService, methodInfo, null, 0);
+                        //webService.ConvertRpts();
+                    }
+                    catch (Exception ex)
+                    {
+                        ReportTask.reportLog.TraceLog(TaskBase.TaskTypes.REPORT, "Converting reports service call failed. \n" + ex.ToString());
+                    }
+                }
+                ReportTask.reportLog.TraceLog("Reports converted.");
+            }
+            catch (System.Net.WebException ex)
+            {
+                ReportTask.reportLog.ErrorLog("Error converting existing reports " + ex.Message, "");
+                ReportTask.reportLog.ErrorLog("web exception " + ex.InnerException, "");
+            }
+            catch (Exception e)
+            {
+                ReportTask.reportLog.ErrorLog("Error converting existing reports " + e.Message, "");
+                ReportTask.reportLog.ErrorLog("general exception " + e.InnerException, "");
+            }
+        }
+    } // End Class: ReportTask
+
+    /// ///////////////////////////////////////////////////////////////////////////////////////
+
+    public class CreateReport
+    {
+        private String smtpServer = "localhost";
+        private String faReportingServer = "";
+        private const String EXPORT_FAILED = "Report failed to export.\n";
+        private bool debugMode = false;
+
+        private object list_locker = new object();
+
+
+        public CreateReport() { }
+        public CreateReport(DataTable DataReports, List<string> list)
+        {
+            GenerateReports(DataReports, list);
+        }
+        private void GenerateReports(DataTable Reports, List<string> list)
+        {
+            try
+            {
+                string configFileName = JobScheduler.fileLoc.Directory + "\\" + JobScheduler.CONFIG_FILE;
+                if (!File.Exists(configFileName))
+                {
+                    string m = "Could not find file " + configFileName;
+                    ReportTask.reportLog.ErrorLog(m);
+                }
+                else
+                {
+                    ReportTask.reportLog.TraceLog("Generating reports...");
+
+                    System.Data.DataSet dsSettings = new System.Data.DataSet();
+                    dsSettings.ReadXml(configFileName);
+
+                    ReportTask.reportLog.TraceLog("XML file loaded.");
+
+                    if (dsSettings.Tables.Contains("Settings"))
+                    {
+                        ReportTask.reportLog.TraceLog("Settings node found");
+
+                        DataTable dt = dsSettings.Tables["Settings"];
+                        if (dt.Columns.Contains("Debug"))
+                        {
+                            string val = dt.Rows[0]["Debug"].ToString();
+                            if (val != null)
+                                if (val.Trim().ToLower() == "true")
+                                    debugMode = true;
+                        }
+                        if (dt.Columns.Contains("SMTPServer"))
+                        {
+                            smtpServer = dt.Rows[0]["SMTPServer"].ToString();
+                        }
+                        else
+                        {
+                            ReportTask.reportLog.ErrorLog("No smtp server setting in " + JobScheduler.CONFIG_FILE, "");
+                        }
+                        if (dt.Columns.Contains("WSUrl"))
+                        {
+                            faReportingServer = dt.Rows[0]["WSUrl"].ToString();
+                        }
+                        else
+                        {
+                            ReportTask.reportLog.ErrorLog("No WSUrl server setting in " + JobScheduler.CONFIG_FILE, "");
+                        }
+                    }
+                }
+            }
+            catch (Exception exc)
+            {
+                ReportTask.reportLog.ErrorLog("Error opening settings file: " + exc.Message + "\n Error Call stack:" + exc.StackTrace, "");
+            }
+
+            foreach (DataRow dr in Reports.Rows)
+            {
+                DataRow row = dr;
+                string runId = row["Report_Run_ID"].ToString();
+                if (!list.Contains(runId))
+                {
+                    list.Add(runId);
+                    var tsk = System.Threading.Tasks.Task.Factory.StartNew(() => processRpt(row)).ContinueWith(x => removeFromQueue(runId, list));
+                }
+            }
+        }
+        private void removeFromQueue(string id, List<string> list)
+        {
+            try
+            {
+                JobScheduler.semaphore.Release();
+            }
+            catch (SemaphoreFullException ex)
+            {
+                //Should not get here 
+                ReportTask.reportLog.ErrorLog("Exception: trying to Release item from Semaphore object " + ex.Message, "");
+            }
+            catch
+            {
+                //or here
+                ReportTask.reportLog.ErrorLog("Exception(s): trying to Release item from Semaphore object", "");
+            }
+
+            lock (list_locker)
+            {
+                list.Remove(id);
+            }
+        }
+        private void processRpt(DataRow dr)
+        {
+            JobScheduler.semaphore.WaitOne();
+
+            ThreadLocal<string> strFrom = new ThreadLocal<string>(() => string.Empty);
+            ThreadLocal<string> strBody = new ThreadLocal<string>(() => string.Empty);
+            ThreadLocal<string> strSubject = new ThreadLocal<string>(() => string.Empty);
+            ThreadLocal<string> strTo = new ThreadLocal<string>(() => string.Empty);
+            ThreadLocal<string> strCc = new ThreadLocal<string>(() => string.Empty);
+            ThreadLocal<string> strBcc = new ThreadLocal<string>(() => string.Empty);
+            ThreadLocal<string> strRptPath = new ThreadLocal<string>(() => string.Empty);
+            ThreadLocal<string> strFileName = new ThreadLocal<string>(() => string.Empty);
+            ThreadLocal<string> fullXML = new ThreadLocal<string>(() => string.Empty);
+            ThreadLocal<string> runid = new ThreadLocal<string>(() => string.Empty);
+            ThreadLocal<string> uid = new ThreadLocal<string>(() => string.Empty);
+            ThreadLocal<string> exportType = new ThreadLocal<string>(() => string.Empty);
+
+            ThreadLocal<bool> onceOnly = new ThreadLocal<bool>(() => false);
+            ThreadLocal<bool> messageSent = new ThreadLocal<bool>();
+
+            System.Data.DataSet ds = new System.Data.DataSet();
+            ds.Clear();
+
+            string xmlStr = dr["XML_STRING"].ToString();
+            StringReader sr = new StringReader(xmlStr);
+            ds.ReadXml(sr);
+            fullXML.Value = xmlStr;
+
+            uid.Value = dr["USERID"].ToString();
+            exportType.Value = dr["exporttype"].ToString();
+
+            if (ds.Tables.Contains("ReportParam"))
+            {
+                DataTable dt = ds.Tables["ReportParam"];
+                foreach (DataRow aRow in dt.Rows)
+                {
+                    if (aRow["Name"].ToString() == "ReportName")
+                        strRptPath.Value = aRow["Value"].ToString();
+                }
+            }
+
+            if (ds.Tables.Contains("SchedTrigger"))
+            {
+                DataTable dt = ds.Tables["SchedTrigger"];
+                if (dt.Rows[0]["TriggerType"].ToString() == "Now" || dt.Rows[0]["TriggerType"].ToString() == "Once")
+                {
+                    onceOnly.Value = true;
+                }
+            }
+
+            runid.Value = dr["Report_Run_ID"].ToString();
+
+            ReportTask.reportLog.TraceLog("Distributing reports...", runid.Value);
+
+            ReportTask.StartReport(runid.Value);
+
+            if (ds.Tables.Contains("EmailSettings"))
+            {
+                DataTable dt = ds.Tables["EmailSettings"];
+                DataRow dtr = dt.Rows[0];
+                strFrom.Value = FADataAccess.HelperFunctions.ConvertToSpecialChar(dtr["From"].ToString());
+                strBody.Value = FADataAccess.HelperFunctions.ConvertToSpecialChar(dtr["Message"].ToString());
+                strSubject.Value = FADataAccess.HelperFunctions.ConvertToSpecialChar(dtr["Subject"].ToString());
+
+                if (ds.Tables.Contains("EmailRecipients"))
+                {
+                    dt = ds.Tables["EmailRecipients"];
+                    foreach (DataRow aRow in dt.Rows)
+                    {
+                        switch (aRow["Line"].ToString())
+                        {
+                            case "TO":
+                                {
+                                    strTo.Value = ((strTo.Value.Length > 0) ? strTo.Value + ";" + FADataAccess.HelperFunctions.ConvertToSpecialChar(aRow["Email"].ToString()) : FADataAccess.HelperFunctions.ConvertToSpecialChar(aRow["Email"].ToString()));
+                                    break;
+                                }
+                            case "CC":
+                                {
+                                    strCc.Value = ((strCc.Value.Length > 0) ? strCc.Value + ";" + FADataAccess.HelperFunctions.ConvertToSpecialChar(aRow["Email"].ToString()) : FADataAccess.HelperFunctions.ConvertToSpecialChar(aRow["Email"].ToString()));
+                                    break;
+                                }
+                            case "BCC":
+                                {
+                                    strBcc.Value = ((strBcc.Value.Length > 0) ? strBcc.Value + ";" + FADataAccess.HelperFunctions.ConvertToSpecialChar(aRow["Email"].ToString()) : FADataAccess.HelperFunctions.ConvertToSpecialChar(aRow["Email"].ToString()));
+                                    break;
+                                }
+                        }
+                    }
+
+                    strFileName.Value = System.IO.Path.GetFileNameWithoutExtension(strRptPath.Value);
+                    if (exportType.Value.ToUpper().Equals("CSV"))
+                    {
+                        strFileName.Value = ReportTask.GetTempPath() + strFileName + ".csv";
+                    }
+                    else
+                    {
+                        strFileName.Value = ReportTask.GetTempPath() + strFileName + ".pdf";
+                    }
+
+                    try
+                    {
+                        messageSent.Value = SendMailMessage(strFrom.Value, strTo.Value, strCc.Value, strBcc.Value, strBody.Value, strSubject.Value, strRptPath.Value, strFileName.Value, smtpServer, uid.Value, exportType.Value, runid.Value, fullXML.Value);
+
+                        strTo.Value = "";
+                        strCc.Value = "";
+                        strBcc.Value = "";
+
+                        if (messageSent.Value == true)
+                        {
+                            if (onceOnly.Value)
+                            {
+                                ReportTask.UpdateCompletion(runid.Value, onceOnly.Value, null);
+                            }
+                            else
+                            {
+                                DateTime nextDateTime = Scheduler.GetNextScheduledDateTime(fullXML.Value);
+                                ReportTask.UpdateCompletion(runid.Value, onceOnly.Value, nextDateTime.ToString());
+                            }
+                        }
+                        else
+                        {
+                            DateTime nextDateTime;
+                            if (onceOnly.Value)
+                            {
+                                nextDateTime = DateTime.MinValue;
+                            }
+                            else
+                            {
+                                nextDateTime = Scheduler.GetNextScheduledDateTime(fullXML.Value);
+                            }
+                            ReportTask.ReportsFailedToSend(runid.Value, nextDateTime);
+                        }
+                    }
+                    catch
+                    {
+                        ReportTask.reportLog.ErrorLog("Error trying to send report!", runid.Value);
+                    }
+                }
+            }
+            else
+            {
+                ReportTask.reportLog.ErrorLog("No Email settings section found in xml doc", runid.Value);
+            }
+        }
+        private bool SendMailMessage(String strFrom, String strTo, String strCc, String strBcc, String strMsg, String strSubject, String strRptPath, String strFileName, String smtp_Server, String userid, String export_Type, String runid, String fullXML)
+        {
+            string logMessage = "";
+            System.Net.Mail.MailMessage mailMsg = new System.Net.Mail.MailMessage();
+
+            ReportTask.reportLog.TraceLog("Preparing to send e-mail for report " + strRptPath);
+            try
+            {
+                if (strRptPath.Length > 0)
+                {
+                    if (CreateExpFile(strRptPath, strFileName, userid, export_Type, runid, fullXML))
+                    {
+                        ReportTask.reportLog.TraceLog("  Created report for attachment; file name: " + strFileName);
+                        mailMsg.Attachments.Add(new System.Net.Mail.Attachment(strFileName));
+                        ReportTask.reportLog.TraceLog("  Report attached.");
+                    }
+                    else
+                    {
+                        ReportTask.reportLog.ErrorLog("Attach file failed for: " + strRptPath + "\nFile name: " + strFileName);
+                        mailMsg.Body = EXPORT_FAILED + System.Environment.NewLine;
+                    }
+                }
+
+                mailMsg.From = new System.Net.Mail.MailAddress(strFrom);
+                ReportTask.reportLog.TraceLog("  From: " + strFrom);
+
+                string[] Emails;
+                char[] splitter = { ';' };
+                Emails = strTo.Split(splitter);
+                for (int x = 0; x < Emails.Length; x++)
+                {
+                    mailMsg.To.Add(new System.Net.Mail.MailAddress(Emails[x]));
+                }
+                ReportTask.reportLog.TraceLog("  To: " + strTo);
+
+                if (strCc.Length > 0)
+                {
+                    string[] EmailsCc = strCc.Split(splitter);
+                    for (int x = 0; x < EmailsCc.Length; x++)
+                    {
+                        mailMsg.CC.Add(new System.Net.Mail.MailAddress(EmailsCc[x]));
+                    }
+                }
+                ReportTask.reportLog.TraceLog("  CC: " + strCc);
+
+                if (strBcc.Length > 0)
+                {
+                    string[] EmailsBcc = strBcc.Split(splitter);
+                    for (int x = 0; x < EmailsBcc.Length; x++)
+                    {
+                        mailMsg.Bcc.Add(new System.Net.Mail.MailAddress(EmailsBcc[x]));
+                    }
+                }
+                ReportTask.reportLog.TraceLog("  BCC: " + strBcc);
+
+                mailMsg.Subject = strSubject;
+                ReportTask.reportLog.TraceLog("  Subject: " + strSubject);
+
+                mailMsg.Body += strMsg + System.Environment.NewLine;
+                ReportTask.reportLog.TraceLog("  Body: " + strMsg);
+
+                System.Net.Mail.SmtpClient smtp = new System.Net.Mail.SmtpClient();
+                smtp.Host = smtp_Server;
+                ReportTask.reportLog.TraceLog("Sending mail via SMTP server: " + smtp_Server);
+                smtp.Send(mailMsg);
+                ReportTask.reportLog.TraceLog("Mail sent.");
+                mailMsg.Dispose();
+                return true;
+            }
+            catch (Exception e)
+            {
+                ReportTask.reportLog.TraceLog("Exception: " + e.ToString());
+                ReportTask.reportLog.ErrorLog("Error in SendMailMessage: " + e.Message + "\n\r FileName:" + strFileName
+                    + "\n\r Error Call stack:" + e.StackTrace, runid);
+                if (e.InnerException != null)
+                {
+                    ReportTask.reportLog.ErrorLog("Error in SendMailMessage InnerException.Message = " + e.InnerException.Message, runid);
+                    ReportTask.reportLog.ErrorLog("Error in SendMailMessage InnerException.StackTrace = " + e.InnerException.StackTrace, runid);
+                    ReportTask.reportLog.ErrorLog("Error in SendMailMessage InnerException.Source = " + e.InnerException.Source, runid);
+                    ReportTask.reportLog.ErrorLog("Error in SendMailMessage InnerException.TargetSite = " + e.InnerException.TargetSite, runid);
+                    ReportTask.reportLog.ErrorLog("Error in SendMailMessage InnerException.ToString() = " + e.InnerException.ToString(), runid);
+                }
+                ReportTask.reportLog.ErrorLog("Error in SendMailMessage Details = " + logMessage, runid);
+
+                try
+                {
+
+                    System.Net.Mail.MailMessage new_mailMsg = new System.Net.Mail.MailMessage();
+                    new_mailMsg.Body = "Problems with SMTP settings prohibited us from attaching the report.";
+                    string[] Bad_Emails;
+                    char[] Bad_splitter = { ';' };
+                    Bad_Emails = strTo.Split(Bad_splitter);
+
+                    for (int x = 0; x < Bad_Emails.Length; x++)
+                    {
+                        new_mailMsg.To.Add(new System.Net.Mail.MailAddress(Bad_Emails[x]));
+                    }
+
+                    if (strCc.Length > 0)
+                    {
+                        string[] Bad_EmailsCC = strCc.Split(Bad_splitter);
+
+                        for (int x = 0; x < Bad_EmailsCC.Length; x++)
+                        {
+                            new_mailMsg.CC.Add(new System.Net.Mail.MailAddress(Bad_EmailsCC[x]));
+                        }
+                    }
+
+                    if (strBcc.Length > 0)
+                    {
+                        string[] Bad_EmailsBcc = strBcc.Split(Bad_splitter);
+
+                        for (int x = 0; x < Bad_EmailsBcc.Length; x++)
+                        {
+                            new_mailMsg.Bcc.Add(new System.Net.Mail.MailAddress(Bad_EmailsBcc[x]));
+                        }
+                    }
+
+                    new_mailMsg.From = new System.Net.Mail.MailAddress(strFrom);
+                    new_mailMsg.Body += strMsg + "\r\n";
+                    new_mailMsg.Subject = strSubject;
+                    System.Net.Mail.SmtpClient smtp_error = new System.Net.Mail.SmtpClient();
+                    smtp_error.Host = smtp_Server;
+                    smtp_error.Send(mailMsg);
+                    new_mailMsg.Dispose();
+
+                }
+                catch (Exception ex)
+                {
+                    ReportTask.reportLog.ErrorLog(String.Format("{0}{1}{2}{3}{4}{5}",
+                        "Error in SendMailMessage catch: ",
+                        ex.Message,
+                        "\n\r FileName:",
+                        strFileName,
+                        "\n\r Error Call stack:",
+                        ex.StackTrace), runid);
+                    return false;
+                }
+                return false;
+            }
+        }
+        private Boolean CreateExpFile(String strRptPath, String strFileName, String userid, String Exporttype, String runid, String fullXML)
+        {
+            ReportTask.reportLog.TraceLog(String.Format("CreateExpFile: path={0}, filename={1}", strRptPath, strFileName));
+            try
+            {
+                Boolean rptExported = false;
+                if (strFileName.Length > 0)
+                {
+                    using (var webService = ReportTask.GetReportingServiceHandle())
+                    {
+                        ReportTask.reportLog.TraceLog("Determining timeout.");
+
+                        int timeoutVal = 110;
+                        try
+                        {
+                            Type type_timeout = webService.GetType();
+                            MethodInfo methodInfo_typeout = type_timeout.GetMethod("GetTimeout");
+                            timeoutVal = ReportTask.invokeInitMethod(webService, methodInfo_typeout, null, 0);
+                            //timeoutVal = webService.GetTimeout();
+                        }
+                        catch (Exception ex)
+                        {
+                            ReportTask.reportLog.ErrorLog("Error getting timeout " + ex.Message);
+                        }
+
+                        ReportTask.reportLog.TraceLog("Timeout: " + timeoutVal.ToString());
+
+                        webService.Timeout = timeoutVal * 1000;
+
+#if DEBUG
+                        ReportTask.reportLog.TraceLog("\t\t time out set to 1 \n\r " + timeoutVal * 1000);
+                        ReportTask.reportLog.TraceLog("\t\t time out set to 2 \n\r " + webService.Timeout);
+                        ReportTask.reportLog.TraceLog("\t\t calling  FaRS.GetReportAsByte " + webService.Timeout);
+                        ReportTask.reportLog.TraceLog("\t\t CreateExpFile - Line 3 FaRS.Url = " + webService.Url);
+#endif
+
+                        ReportTask.reportLog.TraceLog("Calling web service GetReportAsByte...");
+
+                        Type type = webService.GetType();
+                        MethodInfo methodInfo = type.GetMethod("GetReportAsByte");
+                        object[] parametersArray = new object[] { fullXML, userid, Exporttype };
+                        Byte[] documentcontents = ReportTask.invokeByteMethod(webService, methodInfo, parametersArray, 0);
+                        //Byte[] documentcontents = webService.GetReportAsByte(fullXML, userid, Exporttype);
+
+                        ReportTask.reportLog.TraceLog("GetReportAsByte response received.");
+
+#if DEBUG
+                        ReportTask.reportLog.TraceLog("\t\t CreateExpFile - Line 4 returned from GetReportAsByte()  documentcontents.Length = " + documentcontents.Length.ToString());
+                        ReportTask.reportLog.TraceLog("\t\t back from  FaRS.GetReportAsByte " + webService.Timeout);
+#endif
+
+                        if (documentcontents.Length > 0)
+                        {
+                            ReportTask.reportLog.TraceLog("Report document created.");
+
+                            MemoryStream m = new MemoryStream(documentcontents);
+                            //there should never be another temp file but lets check anyway.
+                            if (System.IO.File.Exists(strFileName))
+                                System.IO.File.Delete(strFileName);
+                            FileStream f = new FileStream(strFileName, FileMode.Create);
+                            m.WriteTo(f);
+                            m.Close();
+                            f.Close();
+                            f = null;
+                            m = null;
+                            rptExported = true;
+                        }
+                        else
+                        {
+                            ReportTask.reportLog.ErrorLog("CreateExpFile  FaRS.GetReportAsByte() Error !", runid);
+                        }
+                    }
+#if DEBUG
+                    ReportTask.reportLog.TraceLog("*******CreateExpFile - End strRptPath= " + strRptPath + "; strFileName=" + strFileName);
+#endif
+                }
+                return rptExported;
+            }
+            catch (SoapException ex)
+            {
+                ReportTask.reportLog.ErrorLog("CreateExpFile SOAP Exception! FaRS.Url  = " + faReportingServer + "Reporting/FAReportingService.asmx" + ", fullXML = " + fullXML, runid);
+                ReportTask.reportLog.ErrorLog(" SOAP Exception in CreateExpFile: " + ex.Message + "\n\r FileName:" + strFileName
+                    + "\n\r\t Error Call stack:" + ex.StackTrace
+                    + "\n\r\t Error Source:" + ex.Source
+                    + "\n\r\t TargetSite:" + ex.TargetSite
+                    + "\n\r\t InnerException:" + ex.InnerException
+                    + "\n\r\t Detail:" + ex.Detail
+                    + "\n\r\t Soap Code:" + ex.Code
+                    + "\n\r\t Soap Actor:" + ex.Actor, runid);
+                return false;
+            }
+            catch (Exception ex)
+            {
+                ReportTask.reportLog.ErrorLog("CreateExpFile failed! strRptPath = " + strRptPath + ", strFileName = " + strFileName, runid);
+                ReportTask.reportLog.ErrorLog("Error in CreateExpFile: " + ex.Message + "\n\r FileName:" + strFileName
+                    + "\n\r Error Call stack:" + ex.StackTrace
+                    + "\n\r Error Source:" + ex.Source, runid);
+                return false;
+            }
+        }
+    } // End Class: CreateReport
+}

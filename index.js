@@ -1,14 +1,11 @@
-const svnUltimate = require('node-svn-ultimate');
 const fs = require('fs');
 const nconf = require('nconf');
 const path = require('path');
 let svn = require('./scripts/svn');
-const numCPUs = require('os').cpus().length;
-
-var _filePath = path.resolve(__dirname, "config.json");
+let _filePath = path.resolve(__dirname, "config.json");
 
 //www.acuriousanimal.com/2017/08/12/understanding-the-nodejs-cluster-module.html
-
+//https://medium.freecodecamp.org/node-js-child-processes-everything-you-need-to-know-e69498fe970a
 
 if(!fs.existsSync(_filePath))
 {
@@ -28,5 +25,10 @@ else {
     console.log(data);
   });
 
-  svn.process(nconf);
+  process.on('exit', function () {
+    console.log("Finished in " + process.hrtime(startTime));
+  });
+
+  const startTime = process.hrtime();
+  svn._process(nconf);
 }

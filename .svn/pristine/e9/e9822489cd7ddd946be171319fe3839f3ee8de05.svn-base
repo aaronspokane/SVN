@@ -1,0 +1,524 @@
+using System;
+using System.ServiceProcess;
+using System.IO;
+using System.Threading;
+using System.Xml;
+using System.Reflection;
+using FASuite.AMDataAccess;
+using FASuite.AMTransferObjects;
+
+namespace FASuite.Scheduler
+{
+    public class JobSchedulerService : System.ServiceProcess.ServiceBase
+    {
+        public const string PRODUCT_NAME = "Scheduler";
+        public const string FASUITE_REPORTS_TEMP_FOLDER = "FASuiteReports";
+        public const int TEMP_FILES_TTL_HOURS_DEFAULT = 24; // def = 24, but optionally read from settings
+        private int tempFilesTTLHours = TEMP_FILES_TTL_HOURS_DEFAULT;
+        private System.ComponentModel.Container components = null;
+        private JobScheduler Scheduler;
+        private Thread theLoaderThread;
+        static public bool enableTraceLog = false;
+        private static Logging serviceLog = null;
+
+        public JobSchedulerService()
+        {
+            InitializeComponent();
+            this.Scheduler = new JobScheduler();
+        }
+
+        [STAThread]
+        static void Main(string[] args)
+        {
+            if (serviceLog == null)
+                serviceLog = new Logging("JobSchedulerService");
+
+            FACommon.Logging.UseCustomLogPath = false;
+            FACommon.Logging.StartupPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            FACommon.Logging.ProductName = PRODUCT_NAME;
+            System.ServiceProcess.ServiceBase[] ServicesToRun = new System.ServiceProcess.ServiceBase[] { new JobSchedulerService() };
+            System.ServiceProcess.ServiceBase.Run(ServicesToRun);
+        }//End of Main()
+        private void InitializeComponent()
+        {
+            this.CanPauseAndContinue = true;
+            this.CanShutdown = true;
+            this.CanStop = true;
+            LoadConfig();
+        }
+        private bool LoadConfig()
+        {
+            string executingDIR = Assembly.GetExecutingAssembly().Location.ToString();
+            System.IO.FileInfo fileLoc = new FileInfo(executingDIR);
+            System.Xml.XmlDocument xmlDoc = new System.Xml.XmlDocument();
+
+            string filename = fileLoc.Directory + "\\" + JobScheduler.CONFIG_FILE;
+
+            if (System.IO.File.Exists(filename))
+            {
+                // load settings from XML doc
+                xmlDoc.Load(filename);
+
+                // read option trace setting to enable tracing of service activity.
+                XmlNode nodeTrace = xmlDoc.SelectSingleNode(".//trace");
+                if (nodeTrace != null)
+                {
+                    if (nodeTrace.InnerText.ToUpper() == "TRUE")
+                    {
+                        JobSchedulerService.enableTraceLog = true;
+                        serviceLog.TraceLog("JOB SCHEDULER SERVICE LAUNCHER - TRACE LOG IS ENABLED");
+                    }
+                }
+
+                // read setting for service name
+                System.Xml.XmlNode nodeServiceName = xmlDoc.SelectSingleNode(".//servicename");
+                if (nodeServiceName != null)
+                {
+                    this.ServiceName = nodeServiceName.InnerText;
+                }
+                if (!String.IsNullOrWhiteSpace(ServiceName))
+                {
+                    serviceLog.TraceLog(String.Format("Service name: {0}", ServiceName));
+                }
+                else
+                {
+                    FailOut("node 'servicename' not found in config.");
+                    return false;
+                }
+
+                // read optional setting for TTL (in hours) for temp files - or use default TTL
+                System.Xml.XmlNode nodeTTL = xmlDoc.SelectSingleNode(".//tempfilesttl");
+                if (nodeTTL != null)
+                {
+                    if (!int.TryParse(nodeTTL.InnerText, out this.tempFilesTTLHours))
+                    {
+                        this.tempFilesTTLHours = TEMP_FILES_TTL_HOURS_DEFAULT;
+                        serviceLog.TraceLog(String.Format("Temp Files TTL Hours parse error for node 'tempfilesttl' - using default: {0}", this.tempFilesTTLHours));
+                    }
+                    else
+                    {
+                        serviceLog.TraceLog(String.Format("Temp Files TTL found in config: {0}", this.tempFilesTTLHours));
+                    }
+                }
+                else
+                {
+                    this.tempFilesTTLHours = TEMP_FILES_TTL_HOURS_DEFAULT;
+                    serviceLog.TraceLog(String.Format("Temp Files TTL Hours not found, using default: {0}", this.tempFilesTTLHours));
+                }
+
+                // Web service URL is required and must point to an appropriate web instance (one that can run crystal reports)
+                XmlNode nodeUrl = xmlDoc.SelectSingleNode(".//WSUrl");
+                if (nodeUrl != null)
+                {
+                    if (!String.IsNullOrWhiteSpace(nodeUrl.InnerText))
+                    {
+                        JobScheduler.WebServiceURL = nodeUrl.InnerText;
+                    }
+                }
+                if (!String.IsNullOrWhiteSpace(JobScheduler.WebServiceURL))
+                {
+                    serviceLog.TraceLog(String.Format("Web service URL: {0}", JobScheduler.WebServiceURL));
+                }
+                else
+                {
+                    FailOut("ERROR: node 'WSUrl' not found in config. Web Service name is required.");
+                    return false;
+                }
+
+                // whether to use credentials for Integrated Windows Authentication of web service requests.
+                XmlNode nodeUseWindowsLogon = xmlDoc.SelectSingleNode(".//useWindowsLogOn");
+                if (nodeUseWindowsLogon != null && nodeUseWindowsLogon.InnerText.ToUpper().Equals("TRUE"))
+                {
+                    JobScheduler.useWindowsLogOn = true;
+                    serviceLog.TraceLog("Windows logon credentials enabled.");
+                }
+
+                // number of concurrent threads (clarification: "No" is short for "number")
+                XmlNode nodeNoConcurrentThreads = xmlDoc.SelectSingleNode(".//NoConcurrentThreads");
+                if (nodeNoConcurrentThreads != null && nodeNoConcurrentThreads.InnerText.Length > 0)
+                {
+                    if (!int.TryParse(nodeNoConcurrentThreads.InnerText, out JobScheduler.numberOfThreads))
+                    {
+                        JobScheduler.numberOfThreads = 1;
+                    }
+                }
+                else
+                {
+                    JobScheduler.numberOfThreads = 1;
+                }
+                serviceLog.TraceLog(String.Format("Number of concurrent threads: {0}", JobScheduler.numberOfThreads));
+            }
+            else
+            {
+                // avoid starting if no settings
+                serviceLog.ErrorLog(String.Format("Job Scheduler startup failed. Settings file not found: {0}", filename));
+                FailOut();
+                return false;
+            }
+            return true;
+        }
+        private void FailOut(string m = null)
+        {
+            if (!String.IsNullOrWhiteSpace(m))
+            {
+                serviceLog.ErrorLog(m);
+            }
+            this.ExitCode = 15010; // ERROR_EVT_CONFIGURATION_ERROR, 15010 (0x3AA2), Configuration error.
+            Stop();
+        }
+        protected override void OnShutdown()
+        {
+            serviceLog.TraceLog("Shutdown service.");
+            StopStuff();
+            base.OnShutdown();
+        }
+        /// <summary>
+        /// Clean up any resources being used.
+        /// </summary>
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                if (components != null)
+                {
+                    components.Dispose();
+                }
+            }
+            base.Dispose(disposing);
+        }
+        protected override void OnPause()
+        {
+            serviceLog.TraceLog("Service paused.");
+            JobScheduler.keepRunning = false;
+            base.OnPause();
+        }
+        protected override void OnContinue()
+        {
+            serviceLog.TraceLog("Service resumed.");
+            JobScheduler.keepRunning = true;
+            OnStart(null);
+            base.OnContinue();
+        }
+        protected override void OnStart(string[] args)
+        {
+            serviceLog.TraceLog("Service started.");
+
+            JobScheduler.waitTime = System.DateTime.Now.AddSeconds(JobScheduler.loopTime);
+
+            JobScheduler.tempFilesTTLHours = this.tempFilesTTLHours;
+            JobScheduler.keepRunning = true;
+            theLoaderThread = new Thread(new ThreadStart(Scheduler.DoRun));
+            theLoaderThread.IsBackground = true; // set as background thread so it doesn't prevent StopService from getting hung while waiting for resources
+            theLoaderThread.Start();
+
+            base.OnStart(args);
+        }
+        private void StopStuff()
+        {
+            JobScheduler.keepRunning = false;
+
+            ServiceController[] services = ServiceController.GetServices();
+
+            foreach (ServiceController x in services)
+            {
+                if (x.ServiceName == this.ServiceName)
+                {
+                    if (x.Status == System.ServiceProcess.ServiceControllerStatus.Running)
+                    {
+                        x.Stop();
+                    }
+                }
+            }
+        }
+        protected override void OnStop()
+        {
+            serviceLog.TraceLog("Service stopped.");
+            StopStuff();
+            base.OnStop();
+        }
+    } // End Class: JobSchedulerService
+
+    public class JobScheduler
+    {
+        private const Int16 PAUSE_TIME = 30000; // 30 seconds??
+        public static String CONFIG_FILE = "SchedulerConfig.xml";
+        public static string FASUITE_CONFIG_FILE = "..\\config\\Fasuite.config";
+        public static Boolean keepRunning;
+        public static DateTime waitTime;
+        public static Boolean waiting = true;
+        public static Int16 loopTime = 30;
+        public static String WebServiceURL = "";
+        public static string executingDIR = "";
+        public static FileInfo fileLoc;
+        public static bool useWindowsLogOn = false;
+        public static int numberOfThreads = 1;
+        public static int tempFilesTTLHours = JobSchedulerService.TEMP_FILES_TTL_HOURS_DEFAULT;
+        public FASuite.Application.Session appSession = null;
+        public static Logging jobSchedulerLog = null;
+
+        public static Semaphore semaphore;
+
+        public JobScheduler() { }
+        /// <summary>
+        /// The meat and potatoes, spawns off tasks on their threads.
+        /// </summary>
+        public void DoRun()
+        {
+            Initialize();
+
+            try
+            {
+                while (keepRunning)
+                {
+                    // start with reporting
+                    HandleReporting();
+
+                    // Get all active tasks
+                    HandleTasks();
+
+                    // Once tasks started, idle for a bit (30 seconds, though??)
+                    waiting = true;
+                    while (waiting && keepRunning)
+                    {
+                        if (DateTime.Now > waitTime)
+                        {
+                            waitTime = DateTime.Now.AddSeconds(loopTime);
+                            waiting = false;
+                        }
+                        Thread.Sleep(PAUSE_TIME);
+                    }
+                }
+            }
+            catch (Exception exc)
+            {
+                jobSchedulerLog.ErrorLog(exc.Message + Environment.NewLine + exc.StackTrace);
+                throw exc;
+            }
+
+        }
+        /// <summary>
+        /// Do initial configuration for task creator, including data access setup.
+        /// </summary>
+        private void Initialize()
+        {
+            if (jobSchedulerLog == null)
+                jobSchedulerLog = new Logging("JobScheduler");
+
+            executingDIR = Assembly.GetExecutingAssembly().Location.ToString();
+            fileLoc = new FileInfo(executingDIR);
+            keepRunning = true;
+
+            JobSchedulerService service = new JobSchedulerService();
+
+            XmlDocument xmlDoc = new XmlDocument();
+            XmlDocument xmlDocICConvert = new XmlDocument();
+
+
+            // kick off the hourly temp file purger thread
+            jobSchedulerLog.TraceLog("Starting Temp File Purger...");
+            System.Threading.Thread tempFilePurger = new Thread(new ThreadStart(this.DoPeriodicTempFilePurge));
+            tempFilePurger.IsBackground = true; // set as background thread to prevent OnStop from hanging while waiting for resources
+            tempFilePurger.Start();
+            jobSchedulerLog.TraceLog("Temp File Purger started.");
+
+            semaphore = new Semaphore(numberOfThreads, numberOfThreads);
+            jobSchedulerLog.TraceLog("Semaphore Thread Count: " + numberOfThreads);
+
+            // End of conversion Process
+            Tasks.ReportTask.convertExistingRecords();
+
+            ConfigureDataAccess();
+        }
+        /// <summary>
+        /// Core method to initialize data access.
+        /// </summary>
+        private bool ConfigureDataAccess()
+        {
+            bool ret = false;
+            // Load FACommon
+            // Running from [Deployment]\Scheduler, look at ..\config\FASuite.config
+            string configFileLoc = Path.Combine(fileLoc.Directory.FullName, FASUITE_CONFIG_FILE);
+            if (File.Exists(configFileLoc))
+            {
+                try
+                {
+                    // Load config file
+                    FACommon.Configuration.Load(configFileLoc);
+                }
+                catch (Exception exc)
+                {
+                    jobSchedulerLog.ErrorLog(string.Format("Error while loading FASuite.config: {0}{1}{2}", exc.Message, Environment.NewLine, exc.StackTrace));
+                }
+
+                try
+                {
+                    // Create Data Factory.
+                    FASuite.AMDataAccess.Factory.DataFactory = FASuite.AMDataAccess.DAOFactory.GetDAOFactory(FACommon.Configuration.DatabaseType);
+
+                    // Create app session
+                    appSession = Utils.GetAppSession();
+                }
+                catch (Exception exc)
+                {
+                    jobSchedulerLog.ErrorLog(string.Format("Error while creating database connection: {0}{1}{2}", exc.Message, Environment.NewLine, exc.StackTrace));
+                }
+            }
+            else
+                jobSchedulerLog.ErrorLog(string.Format("Failed to find FASuite.config at: {0}.", FASUITE_CONFIG_FILE));
+
+            return ret;
+        }
+        /// <summary>
+        /// Spawn a single thread to handle reporting tasks.
+        /// </summary>
+        private void HandleReporting()
+        {
+            ThreadManager.StartTask(Tasks.TaskBase.TaskTypes.REPORT, null, appSession);
+        }
+        /// <summary>
+        /// Queries SCHEDULED_TASKS for all active tasks, spawns any that need to be started.
+        /// </summary>
+        private void HandleTasks()
+        {
+            try
+            {
+                // if network connection lost, we lose connection to db even though dacontext still thinks it is connected
+                // going to release and re-create every time.
+                var dao = Factory.DataFactory.GetScheduledTasksDAO(this.appSession.DAContext);
+                dao.AddQueryItem("*");
+
+                if (Factory.DataFactory.daoType.Equals(DAOFactory.DAOTypes.MSSQL)) 
+                    dao.AddFilter(string.Format("{0} <= CONVERT(datetime, '{1}', 101)", ScheduledTasksDAO.QueryItems.DATETIME_SCHED_START, FACommon.Utils.FormatFADate(DateTime.Now)));
+                else
+                    dao.AddFilter(string.Format("{0} <= TO_DATE('{1}', 'MM/DD/YYYY HH24:MI')", ScheduledTasksDAO.QueryItems.DATETIME_SCHED_START, FACommon.Utils.FormatFADate(DateTime.Now)));
+
+                dao.AddFilter(string.Format("{0} is null", ScheduledTasksDAO.QueryItems.DATETIME_COMPLETE)); // exclude finished tasks
+                dao.AddFilter(string.Format("{0} is null", ScheduledTasksDAO.QueryItems.DATETIME_ACTUAL_START)); // exclude currently running tasks
+
+                var dataList = dao.FindWhere("");
+
+                // start the task!
+                foreach (ScheduledTasksTO taskRecord in dataList)
+                    ThreadManager.StartTask(taskRecord.TaskType.Value, taskRecord, appSession);
+            }
+            catch (Exception exc)
+            {
+                jobSchedulerLog.ErrorLog("JobScheduler:" + exc.Message + Environment.NewLine + exc.StackTrace);
+            }
+            finally
+            {
+                this.appSession.DAContext.Release();
+            }
+        }
+
+        // Utility Methods =======================================================================
+        /// <summary>
+        /// Thread method, purges temp files then sleeps for an hour
+        /// </summary>
+        public void DoPeriodicTempFilePurge()
+        {
+            while (keepRunning)
+            {
+                PurgeTempFiles();
+                System.Threading.Thread.Sleep(60 * 60 * 1000);
+            }
+        }
+        /// <summary>
+        /// Meat and potatoes of file purging.
+        /// </summary>
+        public void PurgeTempFiles()
+        {
+            jobSchedulerLog.TraceLog("PF: PurgeTempFiles() called");
+            DateTime now = DateTime.Now;
+            DateTime expiration = now.AddHours(-1.00 * JobScheduler.tempFilesTTLHours);
+            jobSchedulerLog.TraceLog("PF: Now: " + now + " -- Expiration: " + expiration);
+            if (expiration < now)
+            {
+                try
+                {
+                    String strTempPath = System.IO.Path.GetTempPath() + JobSchedulerService.FASUITE_REPORTS_TEMP_FOLDER + @"\";
+                    jobSchedulerLog.TraceLog("PF: Temp Path: " + strTempPath);
+                    if (System.IO.Directory.Exists(strTempPath))
+                    {
+                        System.IO.DirectoryInfo tempReportsDir = new DirectoryInfo(strTempPath);
+
+                        // Find all files with TTL.
+                        String[] tempfiles = System.IO.Directory.GetFiles(strTempPath, "*.*", SearchOption.AllDirectories);
+                        foreach (String filename in tempfiles)
+                        {
+                            if (System.IO.File.Exists(filename))
+                            {
+                                System.IO.FileInfo file = new FileInfo(filename);
+                                if (file != null && file.Exists)
+                                {
+                                    jobSchedulerLog.TraceLog("PF: Checking file " + file.FullName + " -- " + file.LastWriteTime);
+                                    // only delete the file if it has exceeded its TTL
+                                    if (file.LastWriteTime < expiration)
+                                    {
+                                        string fullname = file.FullName;
+                                        jobSchedulerLog.TraceLog("PF: PurgeTempFiles() attempting delete of file " + fullname);
+                                        file.Delete();
+                                        file = null;
+                                        jobSchedulerLog.TraceLog("PF: deleted - OK");
+                                        // delete the file's folder if it is empty
+                                        try
+                                        {
+                                            System.IO.DirectoryInfo folder = System.IO.Directory.GetParent(fullname);
+                                            if (folder.Exists && folder.GetFiles().Length == 0 && folder.GetDirectories().Length == 0 && !strTempPath.ToLower().StartsWith(folder.Name.ToLower()))
+                                                DeleteFolder(folder);
+                                            folder = null;
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            jobSchedulerLog.ErrorLog("WARNING: PurgeTempFiles() - trying to delete parent folder failed: " + ex.Message + "\r\n\r\nSuccessfully deleted report, so this warning is probably safe to ignore (permissions issue)?");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Find all empty folders with elapsed TTL.
+                        String[] tempfolders = System.IO.Directory.GetDirectories(strTempPath, "*", SearchOption.AllDirectories);
+                        foreach (String foldername in tempfolders)
+                        {
+                            try
+                            {
+                                // If folder has elapsed TTL & is empty, remove it.
+                                // Checking TTL on the folder because it could be created and not yet had the report copied into it when this runs.
+                                DirectoryInfo curFolder = new DirectoryInfo(foldername);
+                                bool elapsedTTL = curFolder.LastWriteTime < expiration;
+                                bool isEmpty = curFolder.GetFiles().Length == 0 && curFolder.GetDirectories().Length == 0;
+                                bool isNotBaseFolder = !strTempPath.ToLower().StartsWith(curFolder.Name.ToLower());
+                                if (elapsedTTL && isEmpty && isNotBaseFolder)
+                                    DeleteFolder(curFolder);
+                                curFolder = null;
+                            }
+                            catch (Exception ex)
+                            {
+                                jobSchedulerLog.ErrorLog("WARNING: PurgeTempFiles() - trying to delete parent folder failed: " + ex.Message + "\r\n\r\nSuccessfully deleted report, so this warning is probably safe to ignore (permissions issue)?");
+                            }
+                        }
+
+                        tempReportsDir = null;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // log it
+                    jobSchedulerLog.ErrorLog("Exception thrown in PurgeTempFiles(): " + ex.Message);
+                }
+            }
+        }
+        /// <summary>
+        /// Utility for file purging, attempts to remove folders.
+        /// </summary>
+        /// <param name="CurrentFolder"></param>
+        private void DeleteFolder(DirectoryInfo CurrentFolder)
+        {
+            string folderName = CurrentFolder.FullName;
+            jobSchedulerLog.TraceLog("PF: PurgeTempFiles() attempting delete of folder " + folderName);
+            System.IO.Directory.Delete(folderName, true);
+            jobSchedulerLog.TraceLog("PF: deleted - OK");
+        }
+    } // End Class: JobScheduler
+}//End NameSpace: FATaskCreator

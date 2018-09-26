@@ -1,0 +1,662 @@
+﻿using System;
+using System.Xml;
+
+namespace FASuite.Scheduler
+{
+    public class Scheduler
+    {
+        private class SchedulerException : ApplicationException
+        {
+            public SchedulerException(String errMessage) : base(errMessage) { }
+        }
+
+        // Scehduler Assumes:
+        //      1. context is DateTime.Now
+        //      2. if date/time scheduled is less than current date/time move forward to next scheduled date/time
+        //      3. Days of month and Months of Year values are based on TaskScheduler enums
+        //         e.g. 2^4^8^16^32^64^1 == MTuWThFSatSun
+
+        private XmlNode theRootNode;
+        private XmlNode theTriggerNode;
+        private XmlNode theTriggerTypeNode;
+        private XmlNode theTriggerArgsNode;
+
+        [FlagsAttribute]
+        private enum TSMonthsOfTheYear
+        {
+            January = 1,
+            February = 2,
+            March = 4,
+            April = 8,
+            May = 16,
+            June = 32,
+            July = 64,
+            August = 128,
+            September = 256,
+            October = 512,
+            November = 1024,
+            December = 2048,
+        }
+
+        [FlagsAttribute]
+        private enum TSDaysOfTheWeek
+        {
+            Sunday = 1,
+            Monday = 2,
+            Tuesday = 4,
+            Wednesday = 8,
+            Thursday = 16,
+            Friday = 32,
+            Saturday = 64,
+        }
+
+        private enum DayOfWeek
+        {
+            Sunday = System.DayOfWeek.Sunday,
+            Monday = System.DayOfWeek.Monday,
+            Tuesday = System.DayOfWeek.Tuesday,
+            Wednesday = System.DayOfWeek.Wednesday,
+            Thursday = System.DayOfWeek.Thursday,
+            Friday = System.DayOfWeek.Friday,
+            Saturday = System.DayOfWeek.Saturday,
+        }
+
+        private enum MonthOfYear
+        {
+            January = 1,
+            February,
+            March,
+            April,
+            May,
+            June,
+            July,
+            August,
+            September,
+            October,
+            November,
+            December
+        }
+
+        static public DateTime GetNextScheduledDateTime(String xmlSettings)
+        {
+            Scheduler s = new Scheduler(xmlSettings);
+            return (s.GetNextScheduled());
+        }
+
+        public Scheduler(String xmlSettings)
+        {
+            LoadSettings(xmlSettings);
+        }
+
+        public DateTime GetNextScheduled()
+        {
+            DateTime dtNextScheduled = DateTime.MinValue;
+
+            switch (theTriggerTypeNode.InnerXml)
+            {
+                case ("Now"):
+                    dtNextScheduled = DateTime.Now;
+                    break;
+                case ("Once"):
+                    dtNextScheduled = GetOnceSchedule();
+                    break;
+                case ("Daily"):
+                    dtNextScheduled = GetDailySchedule();
+                    break;
+                case ("Weekly"):
+                    dtNextScheduled = GetWeeklySchedule();
+                    break;
+                case ("Monthly"):
+                    dtNextScheduled = GetMonthlySchedule();
+                    break;
+            }
+
+            return (dtNextScheduled);
+        }
+
+        private DateTime GetOnceSchedule()
+        {
+            return (GetNextOnceSchedule());
+        }
+
+        private DateTime GetDailySchedule()
+        {
+            DateTime dtNextScheduled = DateTime.MinValue;
+
+            String startTime = FACommon.XML.GetStringValue(theTriggerArgsNode, "STime", "");
+            String[] startTimeArray = startTime.Split(':');
+            Int16 startHour = Convert.ToInt16(startTimeArray[0]);
+            Int16 startMinute = Convert.ToInt16(startTimeArray[1]);
+
+            String dayInterval = FACommon.XML.GetStringValue(theTriggerArgsNode, "DayInterval", "");
+            switch (dayInterval)
+            {
+                case ("EVERY"):     // Every X Days
+                    {
+                        Int16 interval = (Int16)FACommon.XML.GetIntegerValue(theTriggerArgsNode, "Interval", 0);
+                        dtNextScheduled = GetNextDailySchedule(interval, startHour, startMinute);
+                        break;
+                    }
+                case ("WEEKDAYS"):
+                    {
+                        DayOfWeek[] scheduledDaysArray = { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday };
+                        dtNextScheduled = GetNextWeeklySchedule(1, scheduledDaysArray, startHour, startMinute);
+                        break;
+                    }
+                default:            // every day
+                    {
+                        dtNextScheduled = GetNextDailySchedule(startHour, startMinute);
+                        break;
+                    }
+            }
+
+            return (dtNextScheduled);
+        }
+
+        private DateTime GetWeeklySchedule()
+        {
+            DateTime dtNextScheduled = DateTime.MinValue;
+
+            String startTime = FACommon.XML.GetStringValue(theTriggerArgsNode, "STime", "");
+            String[] startTimeArray = startTime.Split(':');
+            Int16 startHour = Convert.ToInt16(startTimeArray[0]);
+            Int16 startMinute = Convert.ToInt16(startTimeArray[1]);
+
+            String interval = FACommon.XML.GetStringValue(theTriggerArgsNode, "Interval", "");
+
+            String startDays = FACommon.XML.GetStringValue(theTriggerArgsNode, "Days", "");
+            String[] startDaysArray = startDays.Split('^');
+            DayOfWeek[] scheduledDOWArray = new DayOfWeek[startDaysArray.Length];
+            for (Int16 i = 0; i < scheduledDOWArray.Length; i++)
+                scheduledDOWArray[i] = GetDayOfWeek((TSDaysOfTheWeek)Convert.ToInt16(startDaysArray[i].ToString()));
+
+            dtNextScheduled = GetNextWeeklySchedule(Convert.ToInt16(interval), scheduledDOWArray, startHour, startMinute);
+
+            return (dtNextScheduled);
+        }
+
+        private DateTime GetMonthlySchedule()
+        {
+            DateTime dtNextScheduled = DateTime.MinValue;
+
+            String startTime = FACommon.XML.GetStringValue(theTriggerArgsNode, "STime", "");
+            String[] startTimeArray = startTime.Split(':');
+            Int16 startHour = Convert.ToInt16(startTimeArray[0]);
+            Int16 startMinute = Convert.ToInt16(startTimeArray[1]);
+
+            String month = FACommon.XML.GetStringValue(theTriggerArgsNode, "Months", "");
+            String[] monthArray = month.Split('^');
+
+            String argType = FACommon.XML.GetStringValue(theTriggerArgsNode, "Type", "");
+            if (!argType.Equals("DOW")) // for [Months] [OnDay] at [STime]
+            {
+                Int16 scheduledDayOfMonth = (Int16)FACommon.XML.GetIntegerValue(theTriggerArgsNode, "OnDay", 1);
+
+                MonthOfYear[] scheduledMOYArray = new MonthOfYear[monthArray.Length];
+                for (Int16 i = 0; i < scheduledMOYArray.Length; i++)
+                    scheduledMOYArray[i] = GetMonthOfYear((TSMonthsOfTheYear)Convert.ToInt16(monthArray[i].ToString()));
+
+                dtNextScheduled = GetNextMonthlySchedule(scheduledMOYArray, scheduledDayOfMonth, startHour, startMinute);
+            }
+            else  // for [Months] on the [WeekOfMonth] on [DOW] at [STime]
+            {
+                Int16 scheduledWeek = (Int16)FACommon.XML.GetIntegerValue(theTriggerArgsNode, "WeekOfMonth", 1);
+                Int16 scheduledWeekDay = (Int16)FACommon.XML.GetIntegerValue(theTriggerArgsNode, "DOW", 1);
+
+                MonthOfYear[] scheduledMOYArray = new MonthOfYear[monthArray.Length];
+                for (Int16 i = 0; i < scheduledMOYArray.Length; i++)
+                    scheduledMOYArray[i] = GetMonthOfYear((TSMonthsOfTheYear)Convert.ToInt16(monthArray[i].ToString()));
+
+                dtNextScheduled = GetNextMonthlySchedule(scheduledMOYArray, scheduledWeek, scheduledWeekDay, startHour, startMinute);
+            }
+
+            return (dtNextScheduled);
+        }
+
+        private DateTime GetNextOnceSchedule()
+        {
+            DateTime next = DateTime.Now;
+
+            String dateTime = FACommon.XML.GetStringValue(theTriggerArgsNode, "DateTime", "");
+            next = Convert.ToDateTime(dateTime);
+
+            if (next < DateTime.Now)
+                next = DateTime.Now;
+
+            return (next);
+        }
+
+        private DateTime GetNextDailySchedule(Int16 interval, Int16 hour, Int16 minute)
+        {
+            DateTime next = DateTime.Now;
+
+            // set scheduled time
+            next = UpdateTime(next, hour, minute);
+
+            if (next < DateTime.Now)
+                next = next.AddDays(interval);
+
+            return (next);
+        }
+
+        private DateTime GetNextDailySchedule(Int16 hour, Int16 minute)
+        {
+            return (GetNextDailySchedule(1, hour, minute));
+        }
+
+        private DateTime GetNextWeeklySchedule(Int16 interval, DayOfWeek[] days, Int16 hour, Int16 minute)
+        {
+            Boolean futureScheduleFound = false;
+            Array.Sort(days); // ensure sequential values orderered ASC
+            DateTime next = new DateTime(DateTime.Now.Year, DateTime.Now.Month, DateTime.Now.Day, hour, minute, DateTime.Now.Second);
+
+            // scheduled day/time in future?...
+            foreach (DayOfWeek day in days)
+            {
+                if (day < (DayOfWeek)next.DayOfWeek)
+                    continue;
+                else if (day == (DayOfWeek)next.DayOfWeek)
+                {
+                    if (next > DateTime.Now)
+                    {
+                        futureScheduleFound = true;
+                        break;
+                    }
+                }
+                else
+                {
+                    futureScheduleFound = true;
+                    next = next.AddDays(day - (DayOfWeek)next.DayOfWeek);
+                    break;
+                }
+            }
+
+            // ...all schedules in past - move forward interval and then to first scheduled day
+            if (!futureScheduleFound)
+            {
+                if ((DayOfWeek)next.DayOfWeek == days[0])
+                    next = next.AddDays(interval * 7);
+                else
+                    next = next.AddDays((interval - 1) * 7);
+
+                while ((DayOfWeek)next.DayOfWeek != days[0])
+                {
+                    if (next.Month > (DateTime.Now.Month + 1)) // sanity check - should never reach
+                        throw new SchedulerException("Failure to match Day-Of-Week: " + days[0].ToString());
+
+                    next = next.AddDays(1);
+                }
+            }
+
+            return (next);
+        }
+
+        private DateTime GetNextMonthlySchedule(MonthOfYear[] months, Int16 dayOfMonth, Int16 hour, Int16 minute)
+        {
+            Boolean futureScheduleFound = false;
+            Array.Sort(months); // relying on sequential values orderered ASC
+            DateTime next = new DateTime(DateTime.Now.Year, DateTime.Now.Month, dayOfMonth, hour, minute, DateTime.Now.Second);
+
+            // scheduled month/day/time in future?...
+            foreach (MonthOfYear month in months)
+            {
+                if ((int)month < next.Month)
+                    continue;
+                else if ((int)month == next.Month)
+                {
+                    if (next > DateTime.Now)
+                    {
+                        futureScheduleFound = true;
+                        break;
+                    }
+                }
+                else
+                {
+                    futureScheduleFound = true;
+                    next = next.AddMonths((int)month - next.Month);
+                    break;
+                }
+            }
+
+            // ...all schedules in past - move forward to first scheduled month
+            if (!futureScheduleFound)
+            {
+                do
+                {
+                    if (next.Year > (DateTime.Now.Year + 1)) // sanity check - should never reach
+                        throw new SchedulerException("Failure to match Month: " + months[0].ToString());
+
+                    next = next.AddMonths(1);
+                }
+                while ((MonthOfYear)next.Month != months[0]);
+            }
+
+            return (next);
+        }
+
+        private DateTime GetNextMonthlySchedule(MonthOfYear[] months, Int16 weekOfMonth, Int16 dayOfWeek, Int16 hour, Int16 minute)
+        {
+            Boolean futureScheduleFound = false;
+            Array.Sort(months); // relying on sequential values orderered ASC
+            DateTime next = new DateTime(DateTime.Now.Year, DateTime.Now.Month, DateTime.Now.Day, hour, minute, DateTime.Now.Second);
+            next = UpdateDayOfMonth(next, weekOfMonth, dayOfWeek);
+
+            // scheduled month/day/time in future?...
+            foreach (MonthOfYear month in months)
+            {
+                if ((int)month < next.Month)
+                    continue;
+                else if ((int)month == next.Month)
+                {
+                    if (next > DateTime.Now)
+                    {
+                        futureScheduleFound = true;
+                        break;
+                    }
+                }
+                else
+                {
+                    futureScheduleFound = true;
+                    next = next.AddMonths((int)month - next.Month);
+                    next = UpdateDayOfMonth(next, weekOfMonth, dayOfWeek);
+                    break;
+                }
+            }
+
+            // ...all schedules in past - move forward to first scheduled month
+            if (!futureScheduleFound)
+            {
+                do
+                {
+                    if (next.Year > (DateTime.Now.Year + 1)) // sanity check - should never reach
+                        throw new SchedulerException("Failure to match Month: " + months[0].ToString());
+
+                    next = next.AddMonths(1);
+                    next = UpdateDayOfMonth(next, weekOfMonth, dayOfWeek);
+                } while ((MonthOfYear)next.Month != months[0]);
+            }
+
+            return (next);
+        }
+
+        private Int16 GetDayOfMonth(Int16 year, Int16 month, Int16 weekOfMonth, DayOfWeek dow)
+        {
+            Int32 daysInMonth = DateTime.DaysInMonth(year, month);
+            DateTime dtEndOfMonth = new DateTime(year, month, daysInMonth);
+            DateTime dtStartOfMonth = new DateTime(year, month, 1);
+            Int16 ret = 0;
+
+            // "last" week specified
+            if (weekOfMonth == 5)
+            {
+                while ((DayOfWeek)dtEndOfMonth.DayOfWeek != dow)
+                {
+                    if (dtEndOfMonth.Month < month) // sanity check - should never reach
+                        throw new SchedulerException("Failure to match Day-Of-Week: " + dow.ToString());
+                    else
+                        dtEndOfMonth = dtEndOfMonth.AddDays(-1); // move back until day found
+                }
+
+                ret = (Int16)dtEndOfMonth.Day;
+            }
+            else // weeks first through 4th
+            {
+                Int16 weekCount = 0;
+
+                while (weekCount < weekOfMonth)
+                {
+                    if (dtStartOfMonth.Month > month) // sanity check - should never reach
+                        throw new SchedulerException("Failure to match Day-Of-Week: " + dow.ToString());
+
+                    if ((DayOfWeek)dtStartOfMonth.DayOfWeek == dow)
+                        weekCount++;
+
+                    if (weekCount < weekOfMonth)
+                        dtStartOfMonth = dtStartOfMonth.AddDays(1);
+                }
+
+                ret = (Int16)dtStartOfMonth.Day;
+            }
+
+            return (ret);
+        }
+
+        private void LoadSettings(String xmlSettings)
+        {
+            XmlDocument xDoc = FACommon.XML.StringToXml(xmlSettings);
+            theRootNode = xDoc.DocumentElement;
+            theTriggerNode = theRootNode.SelectSingleNode("SchedTrigger");
+            theTriggerTypeNode = theTriggerNode.SelectSingleNode("TriggerType");
+            theTriggerArgsNode = theRootNode.SelectSingleNode("TriggerArgs");
+        }
+
+        private MonthOfYear GetMonthOfYear(TSMonthsOfTheYear moy)
+        {
+            MonthOfYear? retMOY = null;
+
+            switch (moy)
+            {
+                case TSMonthsOfTheYear.January:
+                    retMOY = MonthOfYear.January;
+                    break;
+                case TSMonthsOfTheYear.February:
+                    retMOY = MonthOfYear.February;
+                    break;
+                case TSMonthsOfTheYear.March:
+                    retMOY = MonthOfYear.March;
+                    break;
+                case TSMonthsOfTheYear.April:
+                    retMOY = MonthOfYear.April;
+                    break;
+                case TSMonthsOfTheYear.May:
+                    retMOY = MonthOfYear.May;
+                    break;
+                case TSMonthsOfTheYear.June:
+                    retMOY = MonthOfYear.June;
+                    break;
+                case TSMonthsOfTheYear.July:
+                    retMOY = MonthOfYear.July;
+                    break;
+                case TSMonthsOfTheYear.August:
+                    retMOY = MonthOfYear.August;
+                    break;
+                case TSMonthsOfTheYear.September:
+                    retMOY = MonthOfYear.September;
+                    break;
+                case TSMonthsOfTheYear.October:
+                    retMOY = MonthOfYear.October;
+                    break;
+                case TSMonthsOfTheYear.November:
+                    retMOY = MonthOfYear.November;
+                    break;
+                case TSMonthsOfTheYear.December:
+                    retMOY = MonthOfYear.December;
+                    break;
+            }
+
+            return ((MonthOfYear)retMOY);
+        }
+
+        // Task Scheduler DaysOfTheWeek enum to System.DayOfWeek
+        private DayOfWeek GetDayOfWeek(TSDaysOfTheWeek dow)
+        {
+            DayOfWeek? retDOW = null;
+
+            switch (dow)
+            {
+                case TSDaysOfTheWeek.Sunday:
+                    retDOW = DayOfWeek.Sunday;
+                    break;
+                case TSDaysOfTheWeek.Monday:
+                    retDOW = DayOfWeek.Monday;
+                    break;
+                case TSDaysOfTheWeek.Tuesday:
+                    retDOW = DayOfWeek.Tuesday;
+                    break;
+                case TSDaysOfTheWeek.Wednesday:
+                    retDOW = DayOfWeek.Wednesday;
+                    break;
+                case TSDaysOfTheWeek.Thursday:
+                    retDOW = DayOfWeek.Thursday;
+                    break;
+                case TSDaysOfTheWeek.Friday:
+                    retDOW = DayOfWeek.Friday;
+                    break;
+                case TSDaysOfTheWeek.Saturday:
+                    retDOW = DayOfWeek.Saturday;
+                    break;
+            }
+
+            return ((DayOfWeek)retDOW);
+        }
+
+        private DateTime UpdateDayOfMonth(DateTime dateTimeToUpdate, Int16 weekOfMonth, Int16 dayOfWeek)
+        {
+            DayOfWeek dow = GetDayOfWeek((TSDaysOfTheWeek)dayOfWeek);
+            Int16 dayOfMonth = GetDayOfMonth((Int16)dateTimeToUpdate.Year, (Int16)dateTimeToUpdate.Month, weekOfMonth, dow);
+            dateTimeToUpdate = new DateTime(dateTimeToUpdate.Year, dateTimeToUpdate.Month, dayOfMonth, dateTimeToUpdate.Hour, dateTimeToUpdate.Minute, dateTimeToUpdate.Second);
+            return (dateTimeToUpdate);
+        }
+
+        private DateTime UpdateTime(DateTime dateTimeToUpdate, Int16 hour, Int16 minute)
+        {
+            return (new DateTime(dateTimeToUpdate.Year, dateTimeToUpdate.Month, dateTimeToUpdate.Day, hour, minute, 0));
+        }
+
+#if DEBUG
+        static public Boolean Test()
+        {
+            Boolean ret = false;
+            DateTime nextScheduled;
+
+            try
+            {
+
+                XmlDocument xmlDoc = new System.Xml.XmlDocument();
+                String settings = String.Empty;
+
+                // now
+                settings = @"
+<NewDataSet>
+  <SchedTrigger>
+    <TriggerType>Now</TriggerType>
+    <TriggerID>1</TriggerID>
+  </SchedTrigger>
+</NewDataSet>";
+                xmlDoc.LoadXml(settings);
+                nextScheduled = Scheduler.GetNextScheduledDateTime(settings);
+
+                // once at [DateTime]
+                settings = @"
+<NewDataSet>
+  <SchedTrigger>
+    <TriggerType>Once</TriggerType>
+    <TriggerID>1</TriggerID>
+  </SchedTrigger>
+  <TriggerArgs>
+    <TriggerID>1</TriggerID>
+    <DateTime>12/8/2008 11:30:00 AM</DateTime>
+  </TriggerArgs>
+</NewDataSet>";
+                xmlDoc.LoadXml(settings);
+                nextScheduled = Scheduler.GetNextScheduledDateTime(settings);
+
+                // every [Interval] days at [STime]
+                settings = @"
+<NewDataSet>
+    <SchedTrigger>
+        <TriggerType>Daily</TriggerType>
+        <TriggerID>1</TriggerID>
+    </SchedTrigger>
+    <TriggerArgs>
+        <TriggerID>1</TriggerID>
+        <STime>23:55</STime>
+        <DayInterval>Every</DayInterval>
+        <Interval>6</Interval>
+    </TriggerArgs>
+</NewDataSet>";
+                xmlDoc.LoadXml(settings);
+                nextScheduled = Scheduler.GetNextScheduledDateTime(settings);
+
+                // every weekday at [STime]
+                settings = @"
+<NewDataSet>
+    <SchedTrigger>
+        <TriggerType>Daily</TriggerType>
+        <TriggerID>1</TriggerID>
+    </SchedTrigger>
+    <TriggerArgs>
+        <TriggerID>1</TriggerID>
+        <STime>23:41</STime>
+        <DayInterval>WeekDays</DayInterval>
+    </TriggerArgs>
+</NewDataSet>";
+                xmlDoc.LoadXml(settings);
+                nextScheduled = Scheduler.GetNextScheduledDateTime(settings);
+
+                // every [Interval] weeks for [Days] at [STime]
+                settings = @"
+<NewDataSet>
+    <SchedTrigger>
+        <TriggerType>Weekly</TriggerType>
+        <TriggerID>1</TriggerID>
+    </SchedTrigger>
+    <TriggerArgs>
+        <TriggerID>1</TriggerID>
+        <STime>22:03</STime>
+        <Interval>1</Interval>
+        <Days>8</Days>
+    </TriggerArgs>
+</NewDataSet>";
+                xmlDoc.LoadXml(settings);
+                nextScheduled = Scheduler.GetNextScheduledDateTime(settings);
+
+                // for [Months] [OnDay] at [STime]
+                settings = @"
+<NewDataSet>
+    <SchedTrigger>
+        <TriggerType>Monthly</TriggerType>
+        <TriggerID>1</TriggerID>
+    </SchedTrigger>
+    <TriggerArgs>
+        <TriggerID>1</TriggerID>
+        <STime>06:53</STime>
+        <Type>OnDay</Type>
+        <Months>1^2^4</Months>
+        <OnDay>28</OnDay>
+    </TriggerArgs>
+</NewDataSet>";
+                xmlDoc.LoadXml(settings);
+                nextScheduled = Scheduler.GetNextScheduledDateTime(settings);
+
+                // for [Months] on the [WeekOfMonth] on [DOW] at [STime]
+                settings = @"
+<NewDataSet>
+    <SchedTrigger>
+        <TriggerType>Monthly</TriggerType>
+        <TriggerID>1</TriggerID>
+    </SchedTrigger>
+    <TriggerArgs>
+        <TriggerID>1</TriggerID>
+        <STime>18:23</STime>
+        <Type>DOW</Type>
+        <Months>1</Months>
+        <WeekOfMonth>1</WeekOfMonth>
+        <DOW>64</DOW>
+    </TriggerArgs>
+</NewDataSet>";
+                xmlDoc.LoadXml(settings);
+                nextScheduled = Scheduler.GetNextScheduledDateTime(settings);
+
+                ret = true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+            }
+
+            return (ret);
+        }
+#endif
+    }
+}

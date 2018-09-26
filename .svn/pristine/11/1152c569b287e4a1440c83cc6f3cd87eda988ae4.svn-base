@@ -1,0 +1,437 @@
+﻿using FASuite.AMTransferObjects;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using FASession;
+using System.Threading;
+using FASuite.AMDataAccess;
+
+
+/*
+ * -- TODO --
+ * > After starting a task, update the task record to indicate it has started. (PENDING DB WORK)
+ * > FilePath is hard coded currently
+ * > User / Pass is hard coded currently
+ * > AppSession needs to be individual to each thread? That way each thread can be connected to the app as a certain user
+
+
+ * -- Work That Needs to be Done (EAM-7162) --
+ * Create following columns:
+ *      SCHEDULED_TASKS.DATETIME_ACTUAL_START
+ *      SCHEDULED_TASKS.DATETIME_START          -> SCHEDULED_TASKS.DATETIME_SCHED_START
+ */
+
+namespace FASuite.Scheduler.Tasks
+{
+    /// <summary>
+    /// A JobScheduler task that runs the given record through our EAMObjectLoader.
+    /// Writes output to 
+    /// </summary>
+    public class DataLoadTask : TaskBase
+    {
+        // class members
+        private bool debug = false;
+        private Logging dataLoadLog = null;
+        private ThreadData threadData = null;
+        private FASuite.Application.Session AppSession = null;
+        private DataLoadSettings dlSettings = null;
+
+        // Data Load members
+        private FASuite.BatchImport.ScreenObjImporter importer;
+        private FASuite.BatchImport.ScreenObjImporter.Config cfg;
+
+        public DataLoadTask() { dataLoadLog = new Logging("DataLoadTask"); }
+
+        /// <summary>
+        /// Core thread function, drives the task.
+        /// </summary>
+        /// <param name="TaskRecord"></param>
+        public override void ExecuteTask(object ThreadData)
+        {
+            try
+            {
+                threadData = ThreadData as ThreadData;
+                importer = new FASuite.BatchImport.ScreenObjImporter();
+                dlSettings = ParseSettings();
+
+                if (dlSettings != null)
+                {
+                    if (ConnectToApp(dlSettings))
+                    {
+                        // create args
+                        List<string> listArgs = new List<string>();
+                        listArgs.Add(@"FADataLoader.exe"); // place holder, not used for anything
+                        listArgs.AddRange(new List<string>() { "-N", "1" /*dlSettings.NumThreads.ToString()*/ }); // # Threads -- currently restricted to 1
+                        listArgs.AddRange(new List<string>() { "-I", Path.Combine(FACommon.Configuration.UploadsPath, Path.GetFileName(dlSettings.FilePath)) }); // Input File Path
+                        listArgs.AddRange(new List<string>() { "-L", FACommon.Logging.GetLogPath() }); // Log File Path
+                        listArgs.AddRange(new List<string>() { "-A", FACommon.Configuration.FAAppConnectionString }); // App Server Connection String
+                        listArgs.AddRange(new List<string>() { "-U", "TaskTemp" }); // App User -- will be overridden by appsession
+                        listArgs.AddRange(new List<string>() { "-P", "TaskTemp" }); // App Password -- will be overridden by appsession
+
+                        // Load Configuration
+                        InitializeConfig(listArgs.ToArray());
+
+                        // Listen for output
+                        cfg.theMessageLogger = new FASuite.BatchImport.ScreenObjImporter.Config.PassMessage(HandleMessages);
+
+                        Thread newThread = new Thread(StartDataLoader);
+                        newThread.IsBackground = true; // set as background thread to prevent OnStop from hanging while waiting for resources
+                        newThread.Name = TaskBase.TaskTypes.DATA_LOAD + "_EXECUTIONTHREAD";
+                        newThread.Start();
+
+                        while (newThread.IsAlive)
+                        {
+                            RefreshSettings();
+                            if(cfg.StopProcessing == false && dlSettings.StopDataLoad == "Y")
+                            {
+                                BatchImport.ScreenObjImporter._cfg.StopProcessing = true;
+                                dataLoadLog.TraceLog("StopDataLoad flag received by data load task. Instructing DL threads to stop.");
+                            }
+
+                            Thread.Sleep(5000); // sleep for 5 seconds.
+                        }
+                    }
+
+                }
+                else
+                {
+                    // failed to parse settings passed in.
+                    // means no file path, means data structural issue.
+                    dataLoadLog.ErrorLog(string.Format("ERROR: Failed to parse settings for data load: {0}."), threadData.taskTO.TaskId.Value);
+                }
+            }
+            catch (Exception exc)
+            {
+                dataLoadLog.ErrorLog(string.Format("ERROR: Unhandled exception while running data load ({0}) task: {1}{2}{3}.", 
+                                                    threadData.taskTO.TaskId.Value, 
+                                                    exc.Message, 
+                                                    Environment.NewLine,
+                                                    exc.StackTrace));
+                ScreenUtils.MarkDataLoadCompletion(this.threadData.taskTO.TaskId.Value, this.AppSession.FASession, true);
+            }
+
+
+            if(AppSession != null)
+            {
+                if(AppSession.FASession != null && AppSession.FASession.IsConnected)
+                    AppSession.FASession.Stop();
+                if(AppSession.DAContext != null)
+                    AppSession.DAContext.Release();
+                AppSession = null;
+            }
+
+            // when task finishes, clean up -- return from method so thread cleans up.
+            return;
+        }
+        private bool ConnectToApp(DataLoadSettings dlSettings)
+        {
+            bool connectedAndLoggedIn = false;
+            this.AppSession = Utils.GetAppSession();
+            try
+            {
+                connectedAndLoggedIn = Utils.ConnectAsUser(AppSession, dataLoadLog, this.threadData.taskTO.XUseridInsert.Value);
+            }
+            catch (Exception exc)
+            {
+                dataLoadLog.ErrorLog(exc.Message);
+            }
+
+            return connectedAndLoggedIn;
+        }
+        private DataLoadSettings ParseSettings()
+        {
+            DataLoadSettings settings = null;
+            try
+            {
+                settings = FACommon.JSON.Deserialize<DataLoadSettings>(threadData.taskTO.TaskData.Value);
+            }
+            catch (Exception) { }
+            return settings;
+        }
+        private void RefreshSettings()
+        {
+            // lookup settings from Task 
+            var dao = Factory.DataFactory.GetScheduledTasksDAO(AppSession.DAContext);
+            dao.AddQueryItem(ScheduledTasksDAO.QueryItems.TASK_DATA);
+            var dataList = dao.FindId(this.threadData.taskTO.TaskId.Value);
+            this.dlSettings = FACommon.JSON.Deserialize<DataLoadSettings>(dataList[0].TaskData.Value);
+        }
+
+        /// <summary>
+        /// Constructs the config object that the ScreenObjImporter will use.
+        /// </summary>
+        /// <param name="args"></param>
+        private void InitializeConfig(string[] args)
+        {
+            // Create the Data Load configuration object based on command line arguments.
+            try
+            {
+                cfg = FASuite.BatchImport.ScreenObjImporter.Config.CreateConfig(args);
+            }
+
+            catch (Exception ex)
+            {
+                dataLoadLog.ErrorLog(string.Format("Failed to set settings from command line arguments - {0}.", debug ? ex.ToString() : ex.Message));
+                return;
+            }
+
+            // Get the performant screen and initialize the logging objects.
+            try
+            {
+                cfg.AppSessionOverride = true;
+                cfg.IsConsole = false;
+                cfg.AppSession = this.AppSession; // Pass this app connection to the data loader for it to use.
+                cfg.ScreenID = importer.GetScreenID(cfg);
+
+                // want logs being written to the correct directory.
+                cfg.ErrorFilePath = Path.Combine(cfg.ErrorFilePath, System.DateTime.Now.ToString("yyyyMM"), System.DateTime.Now.ToString("yyyyMMdd"), JobSchedulerService.PRODUCT_NAME, "DataLoader");
+
+                cfg.ErrorLogger = new FASuite.BatchImport.ErrorLogger(cfg.ErrorFilePath + "\\" + cfg.ScreenID, string.Format(@"{0}-{1}-{2:yyyyMMddHHmmss}-Results.csv", Path.GetFileNameWithoutExtension(cfg.InputFilePath), cfg.ScreenID, System.DateTime.Now), false);
+                cfg.SummaryLogger = new FASuite.BatchImport.ErrorLogger(cfg.ErrorFilePath + "\\" + cfg.ScreenID, string.Format(@"{0}-{1}-{2:yyyyMMddHHmmss}-Summary.txt", Path.GetFileNameWithoutExtension(cfg.InputFilePath), cfg.ScreenID, System.DateTime.Now), true);
+            }
+            catch (Exception ex)
+            {
+                dataLoadLog.ErrorLog(string.Format("Failed to retrieve ScreenID from {0} - {1}", cfg.InputFilePath, debug ? ex.ToString() : ex.Message));
+                return;
+            }
+        }
+
+        /// <summary>
+        /// Load it up and lets go!!
+        /// </summary>
+        private void StartDataLoader()
+        {
+            try
+            {
+                // Start the Data Load process.
+                importer.Init(cfg);
+                importer.Process();
+            }
+            catch (Exception ex)
+            {
+                dataLoadLog.ErrorLog(string.Format("{0}", debug ? ex.ToString() : ex.Message));
+            }
+
+            // Mark task as completed on screen
+            ScreenUtils.MarkDataLoadCompletion(this.threadData.taskTO.TaskId.Value, this.AppSession.FASession, cfg.StopProcessing);
+        }
+        
+        /// <summary>
+        /// A delegate method that will receive messages from the ObjectLoader threads as they process the individual rows.
+        /// </summary>
+        /// <param name="RowResult"></param>
+        public void HandleMessages(List<BatchImport.RowResult> RowResults)
+        {
+            // write messages to DATALOAD_MSG
+            ScreenUtils.WriteMessageToScreen(this.threadData.taskTO.TaskId.Value, this.AppSession, RowResults, dataLoadLog);
+        }
+
+    } // End Class: DataLoadTask
+    public class ScreenUtils
+    {
+        public enum ScreenType
+        {
+            DATALOAD,       // ScreenID: 6028
+            SCHEDULEDTASKS  // ScreenID: 6029
+        }
+        /*
+         * Screen : Data Load
+         *  ScreenID : 6028
+         *  WindowID : 13970
+         *           DataLoadID : 2
+         *                RowID : 3
+         *
+         *  WindowID : 13971
+         
+         * Basic Info
+         *          Description : 2
+         *      PathAndFileName : 4
+         *        DateTimeStart : 6
+         *       DateTimeFinish : 8
+
+         * Messages Group Control
+         *               Delete : 10
+         *             ScreenID : 11
+         *             WindowID : 12
+         *        Control Order : 13
+         *              Message : 14
+         *              IsError : 17
+         */
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="DataLoadID"></param>
+        /// <param name="theSession"></param>
+        /// <param name="RowResult"></param>
+        internal static void WriteMessageToScreen(string DataLoadID, FASuite.Application.Session AppSession, List<BatchImport.RowResult> RowResults, Logging dataLoadLog)
+        {
+            var dao = Factory.DataFactory.GetDataloadMsgDAO(AppSession.DAContext);
+
+            try
+            {
+                AppSession.DAContext.BeginTransaction();
+
+                foreach (var RowResult in RowResults)
+                    InsertRow(DataLoadID, AppSession, dao, RowResult);
+
+                AppSession.DAContext.CommitTransaction();
+            }
+            catch (Exception exc)
+            {
+                if (AppSession.DAContext.InTransaction)
+                    AppSession.DAContext.RollbackTransaction();
+
+                dataLoadLog.ErrorLog(exc.Message + Environment.NewLine + exc.StackTrace);
+            }
+        }
+
+        private static string InsertRow(string DataLoadID, Application.Session AppSession, IDataloadMsgDAO dao, BatchImport.RowResult RowResult)
+        {
+            string error = string.Empty;
+            var to = new DataloadMsgTO();
+            to.DataloadId.SetValue(DataLoadID);
+            to.XUseridInsert.SetValue(AppSession.UserID);
+            to.GroupRowId.SetValue(RowResult.RowID.ToString());
+
+            if (RowResult.SourceException != null)
+            {
+                string ScreenID = RowResult.SourceException.Data[FASuite.BatchImport.RowResult.Constants.ExceptionKey_ScreenID] as string;
+                if (!string.IsNullOrWhiteSpace(ScreenID))
+                    to.ScreenScreenId.SetValue(ScreenID);
+
+                string WindowID = RowResult.SourceException.Data[FASuite.BatchImport.RowResult.Constants.ExceptionKey_WindowID] as string;
+                if (!string.IsNullOrWhiteSpace(WindowID))
+                    to.ScreenScreenId.SetValue(WindowID);
+
+                string ControlID = RowResult.SourceException.Data[FASuite.BatchImport.RowResult.Constants.ExceptionKey_ControlID] as string;
+                if (!string.IsNullOrWhiteSpace(ControlID))
+                    to.ScreenScreenId.SetValue(ControlID);
+
+                string GroupRowID = RowResult.SourceException.Data[FASuite.BatchImport.RowResult.Constants.ExceptionKey_GroupRowID] as string;
+                if (!string.IsNullOrWhiteSpace(GroupRowID))
+                    to.ScreenScreenId.SetValue(GroupRowID);
+            }
+
+            var isSuccess = RowResult.Message == FASuite.BatchImport.RowResult.SUCCESS;
+            to.IsError.SetValue(isSuccess ? "N" : "Y");
+
+            to.Message.SetValue(RowResult.Message);
+            dao.Insert(to, ref error);
+            if (error.Length > 0)
+                throw new Exception(error);
+            return error;
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="DataLoadID"></param>
+        /// <param name="theSession"></param>
+        internal static void MarkDataLoadCompletion(string DataLoadID, FASession.Session theSession, bool Interrupted)
+        {
+            UpdateDataLoadRecord(DataLoadID, theSession);
+            UpdateSchedTaskRecord(DataLoadID, theSession, Interrupted);
+        }
+        private static void UpdateDataLoadRecord(string DataLoadID, Session theSession)
+        {
+            // update dataload_main - 6028
+            var dataLoadScreen = GetScreen(ScreenType.DATALOAD, DataLoadID, theSession);
+            dataLoadScreen.PrepareUpdate();
+
+            // Add the message
+            dataLoadScreen.SetValue(13971, 8, FACommon.Utils.FormatFADate(DateTime.Now));
+            FASession.Common.WaitScreenPending(dataLoadScreen);
+
+            // Save it!
+            var dataLoadSS = FASession.CommitWatcher.CommitSynchronous(dataLoadScreen, null, true);
+
+            if (!dataLoadSS.Success)
+            {
+                // what to do here...
+                // There are no screen validations, must be a dropped connection to the app?
+                new Logging(string.Empty).ErrorLog(string.Format("Failed to update data load record. {0}{1}",
+                                                Environment.NewLine,
+                                                FACommon.JSON.Serialize(dataLoadSS)));
+            }
+        }
+        private static void UpdateSchedTaskRecord(string DataLoadID, Session theSession, bool Interrupted)
+        {
+            // update scheduled_tasks - 6029
+            var scheduleTaskScreen = GetScreen(ScreenType.SCHEDULEDTASKS, DataLoadID, theSession);
+            scheduleTaskScreen.PrepareUpdate();
+
+            // DateTimeComplete
+            scheduleTaskScreen.SetValue(13973, 4, FACommon.Utils.FormatFADate(DateTime.Now));
+            FASession.Common.WaitScreenPending(scheduleTaskScreen);
+
+            // Status
+            scheduleTaskScreen.SetValue(13973, 10, Interrupted ? "INTERRUPTED" : "FINISHED");
+            FASession.Common.WaitScreenPending(scheduleTaskScreen);
+
+            // Save it!
+            var schedTaskSS = FASession.CommitWatcher.CommitSynchronous(scheduleTaskScreen, null, true);
+
+            if (!schedTaskSS.Success)
+            {
+                // what to do here...
+                // There are no screen validations, must be a dropped connection to the app?
+                new Logging(string.Empty).ErrorLog(string.Format("Failed to update task record. {0}{1}",
+                                                Environment.NewLine,
+                                                FACommon.JSON.Serialize(schedTaskSS)));
+            }
+        }
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="Type"></param>
+        /// <param name="DataLoadID"></param>
+        /// <param name="theSession"></param>
+        /// <returns></returns>
+        private static FASession.Screen GetScreen(ScreenType Type, string DataLoadID, FASession.Session theSession)
+        {
+            FASession.Screen screen = null;
+
+            int dataLoadID = FACommon.Utils.GetInt(DataLoadID);
+            if (dataLoadID != int.MinValue)
+            {
+                // Get screen and filter to specific data load row
+                if(Type == ScreenType.DATALOAD)
+                {
+                    screen = FASession.Common.GetFAScreen(theSession, 6028);
+                    screen.ClearFilter();
+                    screen.AddFilter(13970, 2, dataLoadID.ToString()); // find data load record
+                }
+                else
+                {
+                    screen = FASession.Common.GetFAScreen(theSession, 6029);
+                    screen.ClearFilter();
+                    screen.AddFilter(13972, 2, dataLoadID.ToString()); // find data load record
+                }
+                screen.RequestGridData(1);
+                FASession.Common.WaitScreenPending(screen);
+
+                if (screen.theScreenData.NumGridRows == 1)
+                {
+                    screen.RequestDetailData(0);
+                    FASession.Common.WaitScreenPending(screen);
+                }
+                else
+                    screen = null; // unable to find specific record, don't return screen.
+            }
+
+            return screen;
+        } // End Method : GetScreen()
+    }
+    public class DataLoadSettings
+    {
+        public string FilePath { get; set; }
+        public int NumThreads { get; set; }
+        public string StopDataLoad { get; set; }
+
+        public DataLoadSettings() { StopDataLoad = "N"; }
+    }
+}

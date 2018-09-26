@@ -1,0 +1,50 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace FASuite.Scheduler
+{
+    public class Logging
+    {
+        private const string TRACE_FILE = "Trace{0}.log";
+        private const string ERROR_FILE = "SchedulerErr{0}.log";
+
+        static readonly object errorLog_locker = new object();
+        static readonly object debuglog_locker = new object();
+        private string FileSuffix = string.Empty;
+
+        public Logging(string FileSuffix)
+        {
+            if (!string.IsNullOrWhiteSpace(FileSuffix))
+                this.FileSuffix = "_" + FileSuffix;
+        }
+
+        public void TraceLog(string m, string runId = null)
+        {
+            if (JobSchedulerService.enableTraceLog)
+            {
+                lock (debuglog_locker)
+                {
+                    if (!String.IsNullOrWhiteSpace(runId))
+                        m = string.Format("Run ID {0}: {1}", runId, m);
+                    
+                    FACommon.Logging.WriteLocal(m, string.Format(TRACE_FILE, FileSuffix), true);
+                }
+            }
+        }
+
+        public void ErrorLog(string m, string runId = null)
+        {
+            lock (errorLog_locker)
+            {
+                if (!string.IsNullOrWhiteSpace(runId))
+                    m = string.Format("Run ID {0}: {1}", runId, m);
+                
+                FACommon.Logging.WriteLocal(m, string.Format(ERROR_FILE, FileSuffix), true);
+            }
+            TraceLog(m, runId); // also log for debug if enabled.
+        }
+    }
+}

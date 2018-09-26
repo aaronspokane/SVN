@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
+
+  <Import Project="FATaskCreator-2010.csproj"/>
+
+  <ItemGroup>
+
+    <Reference Include="FACommon">
+      <Name>FACommon</Name>
+      <HintPath>..\..\..\..\Library\FACommon.dll</HintPath>
+    </Reference>
+    <Reference Include="FADataAccess">
+      <Name>FADataAccess</Name>
+      <HintPath>..\..\..\..\Library\FADataAccess.dll</HintPath>
+    </Reference>
+    <Reference Include="TaskScheduler">
+      <Name>TaskScheduler</Name>
+      <HintPath>..\..\..\..\3rdParty\TaskScheduler.dll</HintPath>
+    </Reference>
+
+	<Reference Include="FASuite.Application">
+      <Name>FASuite.Application</Name>
+      <HintPath>..\..\..\..\Library\FASuite.Application.dll</HintPath>
+    </Reference>
+    <Reference Include="FASession">
+      <Name>FASession</Name>
+      <HintPath>..\..\..\..\Library\FASession.dll</HintPath>
+    </Reference>
+    <Reference Include="FASuite.AMDataAccess">
+      <Name>FASuite.AMDataAccess</Name>
+      <HintPath>..\..\..\..\Library\FASuite.AMDataAccess.dll</HintPath>
+    </Reference>
+    <Reference Include="FASuite.AMTransferObjects">
+      <Name>FASuite.AMTransferObjects</Name>
+      <HintPath>..\..\..\..\Library\FASuite.AMTransferObjects.dll</HintPath>
+    </Reference>
+    <Reference Include="FASuite.BusinessObjects">
+      <Name>FASuite.BusinessObjects</Name>
+      <HintPath>..\..\..\..\Library\FASuite.BusinessObjects.dll</HintPath>
+    </Reference>
+    <Reference Include="FASuite.BatchImport">
+      <Name>FASuite.BusinessObjects</Name>
+      <HintPath>..\..\..\..\Utility\FASuite.BatchImport.dll</HintPath>
+    </Reference>
+
+  </ItemGroup>
+
+</Project>
+

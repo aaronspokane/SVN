@@ -1,0 +1,44 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace FASuite.Scheduler.Tasks
+{
+    public abstract class TaskBase
+    {
+        public class TaskTypes
+        {
+            public const string REPORT = "REPORT";
+            public const string DATA_LOAD = "DATA_LOAD";
+        }
+        public class TaskThreadGovernor
+        {
+            public const int Reporting = 1; // only need one running at a time, will get all valid reports when it runs
+            public const int DataLoad = 1;
+        }
+
+        protected string TaskType;
+        public abstract void ExecuteTask(object TaskRecord);
+
+        public TaskBase() { }
+        public static TaskBase GetTaskClass(string TaskType)
+        {
+            TaskBase ret = null;
+
+            switch(TaskType)
+            {
+                case TaskTypes.REPORT:
+                    ret = new ReportTask();
+                    break;
+                case TaskTypes.DATA_LOAD:
+                    ret = new DataLoadTask();
+                    break;
+                default: break;
+            }
+
+            return ret;
+        }
+    }
+}

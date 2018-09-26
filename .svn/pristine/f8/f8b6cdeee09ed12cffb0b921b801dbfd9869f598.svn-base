@@ -1,0 +1,120 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace FASuite.Scheduler
+{
+    public class Utils
+    {
+        internal static string GetNonce(FASuite.Application.Session AppSession)
+        {
+            string nonce = string.Empty;
+            bool allowNonceReturn = false;
+
+            if (AppSession == null)
+            {
+                throw new FACommon.FAException("AppSession is null.");
+            }
+
+            // block bad chars in input
+            if (AppSession.UserID.IndexOf("'") >= 0)
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                FASuite.AMDataAccess.IUsrMainDAO dao = FASuite.AMDataAccess.Factory.DataFactory.GetUsrMainDAO(AppSession.DAContext);
+                dao.AddQueryItem(FASuite.AMDataAccess.UsrMainDAO.QueryItems.NONCE_TOKEN);
+                System.Collections.Generic.List<FASuite.AMTransferObjects.UsrMainTO> TOs = dao.FindUsr(AppSession.UserID); // purpose not uppercasing user ID! -- the caller of this function needs to take care of that, if necessary.
+                if (TOs != null && TOs.Count == 1 && TOs[0].NonceToken.HasValue)
+                {
+                    nonce = TOs[0].NonceToken.Value;
+                    allowNonceReturn = true;
+                }
+                else
+                    allowNonceReturn = false;
+            }
+            catch (Exception ex)
+            {
+                FACommon.Logging.Write(ex);
+                allowNonceReturn = false;
+            }
+
+            if (allowNonceReturn)
+            {
+                return nonce;
+            }
+            else
+                return string.Empty;
+        }
+
+        internal static bool ConnectAsUser(FASuite.Application.Session AppSession, Logging theLog, string UserID)
+        {
+            bool connectedAndLoggedIn = false;
+            try
+            {
+                if (AppSession.FASessionManager.Connect(AppSession.FASession))
+                {
+                    FASession.Common.RequestNonceFromAppServer(UserID, AppSession.FASessionManager, AppSession.FASession, FASession.AppComm.Message.NonceTypes.NORMAL);
+                    string password = Utils.GetNonce(AppSession);
+                    if (FASession.Common.ConnectToAppServer(UserID, password, AppSession.FASessionManager, AppSession.FASession))
+                    {
+                        connectedAndLoggedIn = true;
+                    }
+                    else
+                    {
+                        // failed to log into app
+                        throw new Exception(string.Format("ERROR: Failed to log into app as user {0}.", UserID));
+                    }
+                }
+                else
+                {
+                    // failed to connect to app
+                    throw new Exception("ERROR: Failed to connect to app server.");
+                }
+            }
+            catch (Exception exc)
+            {
+                theLog.ErrorLog(exc.Message);
+            }
+            return connectedAndLoggedIn;
+        }
+
+        internal static FASuite.Application.Session GetAppSession()
+        {
+            // Create AppSession
+            var appSession = new FASuite.Application.Session();
+            appSession.SessionID = System.DateTime.Now.Ticks.ToString();
+            appSession.DAContext.AccountType = FASuite.AMDataAccess.DAOFactory.DAAccountTypes.DBA;
+
+            // Create app connection
+            if (appSession.FASessionManager == null)
+            {
+                FASession.Manager faMgr = new FASession.Manager();
+                faMgr.AddConnectionString(FACommon.Configuration.FAAppConnectionString);
+                faMgr.SecondsSessionExpire = -1;
+                appSession.FASessionManager = faMgr;
+                appSession.SessionID = Guid.NewGuid().ToString();
+                appSession.FASessionManager.AddConnectionString(FACommon.Configuration.FAAppConnectionString);
+                appSession.FASessionManager.Connect(appSession.FASession);
+            }
+            return appSession;
+        }
+
+        internal static Boolean IsConnectionAvailable(FASuite.AMDataAccess.IDAContext daContext)
+        {
+            Boolean available = false;
+
+            try
+            {
+                daContext.GetConnection();
+                available = true;
+            }
+            catch (Exception) { }
+            return available;
+        }
+    }
+}
