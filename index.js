@@ -1,34 +1,50 @@
+'use strict';
+const program = require('commander');
 const fs = require('fs');
 const nconf = require('nconf');
 const path = require('path');
 let svn = require('./scripts/svn');
-let _filePath = path.resolve(__dirname, "config.json");
+//let _filePath = path.resolve(__dirname, "config.json");
 
-//www.acuriousanimal.com/2017/08/12/understanding-the-nodejs-cluster-module.html
-//https://medium.freecodecamp.org/node-js-child-processes-everything-you-need-to-know-e69498fe970a
+program
+  .version('0.1.0')
+  .description('Checkout using SVN or GIT');
 
-if(!fs.existsSync(_filePath))
-{
-  console.log("config does not exist!!");
-  process.exit(-1);
-}
-else {
-  nconf.file({
-    file: _filePath,
-    // Setting the separator as dot for nested objects
-    logicalSeparator: '.'
-  });
+program
+  .command('svn <path>')
+  .description('Checkout with SVN - config path required')
+  .action((path) => CheckOut(path));
 
-  svn = new svn();
+program
+  .command('git <path>')
+  .description('Checkout with GIT - config path required')
+  .action((path) => console.log(`Checking out with GIT config path: ${path}`));
 
-  svn.on("processed", function(data) {
-    console.log(data);
-  });
+program.parse(process.argv);
 
-  process.on('exit', function () {
-    console.log("Finished in " + process.hrtime(startTime));
-  });
+function CheckOut(path) {
+   if (!fs.existsSync(path)) {
+    console.log("config does not exist!!");
+    process.exit(-1);
+  } else {
+    console.log("config exists!!");
+  /*  nconf.file({
+      file: _filePath,
+      // Setting the separator as dot for nested objects
+      logicalSeparator: '.'
+    });
 
-  const startTime = process.hrtime();
-  svn._process(nconf);
+    svn = new svn();
+
+    svn.on("processed", function(data) {
+      console.log(data);
+    });
+
+    process.on('exit', function() {
+      console.log("Finished in " + process.hrtime(startTime));
+    });
+
+    const startTime = process.hrtime();
+    svn._process(nconf); */
+  }
 }

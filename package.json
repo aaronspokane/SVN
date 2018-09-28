@@ -19,6 +19,7 @@
   "homepage": "https://github.com/aaronspokane/SVN#readme",
   "dependencies": {
     "child_process": "^1.0.2",
+    "commander": "^2.18.0",
     "nconf": "^0.10.0",
     "node-svn-ultimate": "^1.1.0"
   }
