@@ -11,14 +11,20 @@ program
   .description('Checkout using SVN or GIT');
 
 program
-  .command('svn <path>')
+  .command('svn [_path]')
   .description('Checkout with SVN - config path required')
-  .action((path) => CheckOut(path));
+  .action((_path = '') => {
+    const _filePath = _path.length > 0 ? _path : path.resolve(__dirname, "config.json");
+    CheckOut(_filePath);
+  });
 
 program
-  .command('git <path>')
+  .command('git [_path]')
   .description('Checkout with GIT - config path required')
-  .action((path) => console.log(`Checking out with GIT config path: ${path}`));
+  .action((_path = '') => {
+    const _filePath = _path.length > 0 ? _path : path.resolve(__dirname, "config.json");
+    CheckOut(_filePath);
+  });
 
 program.parse(process.argv);
 
@@ -27,13 +33,13 @@ function CheckOut(path) {
     console.log("config does not exist!!");
     process.exit(-1);
   } else {
-    console.log("config exists!!");
-  /*  nconf.file({
-      file: _filePath,
+    nconf.file({
+      file: path,
       // Setting the separator as dot for nested objects
       logicalSeparator: '.'
     });
 
+    /*
     svn = new svn();
 
     svn.on("processed", function(data) {
