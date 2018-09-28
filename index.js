@@ -4,6 +4,8 @@ const fs = require('fs');
 const path = require('path');
 let vc = require('./scripts/vc');
 
+//https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Working_with_Objects
+
 program
   .version('0.1.0')
   .description('Checkout using SVN or GIT');
