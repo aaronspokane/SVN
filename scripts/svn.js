@@ -39,4 +39,5 @@ class svn extends EventEmitter {
   }
 }
 
-module.exports = new svn();
+//module.exports = new svn();
+module.exports = svn;

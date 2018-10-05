@@ -16,4 +16,4 @@ class git extends EventEmitter {
   }
 }
 
-module.exports = new git();
+module.exports = git;

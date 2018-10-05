@@ -8,7 +8,7 @@ program
   .description('Checkout using SVN or GIT');
 
 program
-  .command('svn [_path]')
+  .command('svn chekout [_path]')
   .description('Checkout with SVN - config path required')
   .action((_path = '') => {
     const _filePath = _path.length > 0 ? _path : path.resolve(__dirname, "config.json");
@@ -17,7 +17,7 @@ program
   });
 
 program
-  .command('git [_path]')
+  .command('git chekout [_path]')
   .description('Checkout with GIT - config path required')
   .action((_path = '') => {
     const _filePath = _path.length > 0 ? _path : path.resolve(__dirname, "config.json");

@@ -17,7 +17,6 @@ class VersionControl {
         });
 
         var _vc = factory(type);
-        _vc._verify();
 
         _vc.on("processed", function(data) {
           console.log(data);
@@ -28,7 +27,7 @@ class VersionControl {
         });
 
         const startTime = process.hrtime();
-        //svn._process(nconf);
+        //_vc._process(nconf);
       }
     }
 }
