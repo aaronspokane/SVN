@@ -2,11 +2,15 @@ const EventEmitter = require('events');
 const svnUltimate = require('node-svn-ultimate');
 const nconf = require('nconf');
 const { fork } = require('child_process');
-//const cluster = require('cluster');
 
 class svn extends EventEmitter {
   constructor() {
     super();
+  }
+
+  _verify()
+  {
+    console.log('SVN');
   }
 
   _process(nconf) {
@@ -35,4 +39,4 @@ class svn extends EventEmitter {
   }
 }
 
-module.exports = svn;
+module.exports = new svn();

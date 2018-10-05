@@ -6,9 +6,14 @@ class git extends EventEmitter {
     super();
   }
 
+  _verify()
+  {
+    console.log('GIT');
+  }
+
   _process(nconf) {
 
   }
 }
 
-module.exports = git;
+module.exports = new git();

@@ -1,11 +1,11 @@
-let svn = require('svn');
-let svn = require('git');
+const fs = require('fs');
 const nconf = require('nconf');
+const factory = require('./factory/VCFactory');
 
 class VersionControl {
-  constructor() {
+  constructor() { }
 
-    function CheckOut(path) {
+  CheckOut(path, type) {
        if (!fs.existsSync(path)) {
         console.log("config does not exist!!");
         process.exit(-1);
@@ -16,10 +16,10 @@ class VersionControl {
           logicalSeparator: '.'
         });
 
-        /*
-        svn = new svn();
+        var _vc = factory(type);
+        _vc._verify();
 
-        svn.on("processed", function(data) {
+        _vc.on("processed", function(data) {
           console.log(data);
         });
 
@@ -28,10 +28,9 @@ class VersionControl {
         });
 
         const startTime = process.hrtime();
-        svn._process(nconf); */
+        //svn._process(nconf);
       }
     }
-  }
 }
 
 module.exports = VersionControl;
