@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "mocha"
   },
   "repository": {
     "type": "git",
@@ -18,8 +18,10 @@
   },
   "homepage": "https://github.com/aaronspokane/SVN#readme",
   "dependencies": {
+    "chai": "^4.2.0",
     "child_process": "^1.0.2",
     "commander": "^2.18.0",
+    "mocha": "^5.2.0",
     "nconf": "^0.10.0",
     "node-svn-ultimate": "^1.1.0"
   }
